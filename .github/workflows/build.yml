@@ -1,0 +1,40 @@
+name: build (ROS 2 Humble)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    container: ros:humble
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar dependencias (rosdep)
+        run: |
+          apt-get update
+          rosdep update --rosdistro humble
+          rosdep install --from-paths src --ignore-src --rosdistro humble -r -y
+          apt-get install -y python3-transforms3d liburdfdom-tools
+
+      - name: colcon build
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --event-handlers console_cohesion+
+
+      - name: Verificar que los launch y URDF cargan
+        run: |
+          source install/setup.bash
+          xacro src/bumperbot_description/urdf/bumperbot.urdf.xacro > /tmp/sim.urdf
+          xacro src/bumperbot_description/urdf/bumperbot.urdf.xacro is_sim:=false > /tmp/real.urdf
+          check_urdf /tmp/sim.urdf
+          check_urdf /tmp/real.urdf
+          for f in src/*/launch/*.launch.py; do
+            python3 -c "import importlib.util,sys; s=importlib.util.spec_from_file_location('l','$f'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); m.generate_launch_description()" \
+              && echo "OK  $f" || { echo "FALLA $f"; exit 1; }
+          done

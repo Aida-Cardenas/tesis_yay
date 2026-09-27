@@ -1,0 +1,22 @@
+Este repositorio unifica el código de tres repositorios públicos de Antonio Brandi,
+distribuidos bajo la Licencia Apache 2.0 (ver LICENSE):
+
+  - Self-Driving-and-ROS-2-Learn-by-Doing-Odometry-Control   (rama main, Section12_Build_the_Robot)
+    https://github.com/AntoBrandi/Self-Driving-and-ROS-2-Learn-by-Doing-Odometry-Control
+  - Self-Driving-and-ROS-2-Learn-by-Doing-Map-Localization   (rama main, Section11_Build_the_Robot)
+    https://github.com/AntoBrandi/Self-Driving-and-ROS-2-Learn-by-Doing-Map-Localization
+  - Self-Driving-and-ROS-2-Learn-by-Doing-Plan-Navigation    (rama humble, Section9_Build_the_Robot)
+    https://github.com/AntoBrandi/Self-Driving-and-ROS-2-Learn-by-Doing-Plan-Navigation
+
+Copyright (c) Antonio Brandi.
+
+Modificaciones (Aida Cárdenas, 2026), detalladas en el historial de git:
+  - Unificación en un solo workspace ROS 2 Humble tomando como base el workspace final
+    de Plan-Navigation (rama humble), que ya contiene los paquetes de los otros dos.
+  - Se agrega el firmware robot_control_inverted.ino de los otros dos repositorios.
+  - bumperbot_bringup: argumentos use_safety_stop, use_simple_controller y use_python;
+    use_sim_time=False explícito para el robot real.
+  - Puerto del Arduino configurable (arduino_port, por defecto /dev/arduino) y reglas udev.
+  - bumperbot_navigation: el behavior tree se carga desde el share del paquete
+    (antes era una ruta absoluta de la máquina del autor) y argumento bt_xml.
+  - Dependencias faltantes en varios package.xml.
