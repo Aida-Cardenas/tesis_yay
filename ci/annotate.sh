@@ -7,3 +7,14 @@ annotate() {
   body="${body//$'\n'/'%0A'}"
   echo "::${level} title=${title}::${body}"
 }
+
+stop_group() {
+  local pid="$1"
+  kill -INT -- -"$pid" 2>/dev/null
+  for _ in $(seq 1 20); do
+    kill -0 "$pid" 2>/dev/null || return 0
+    sleep 1
+  done
+  kill -KILL -- -"$pid" 2>/dev/null
+  sleep 1
+}

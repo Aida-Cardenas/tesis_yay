@@ -7,7 +7,7 @@ source ci/annotate.sh
 export ROS_LOCALHOST_ONLY=1
 
 mkdir -p /tmp/twin_gz_logs
-ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake twin_mode:=gazebo gui:=false rviz:=false \
+setsid ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake twin_mode:=gazebo gui:=false rviz:=false \
   leader:=real driver:=square driver_start_delay:=40.0 linear_speed:=0.2 distance:=0.8 \
   log_dir:=/tmp/twin_gz_logs log_tag:=gazebo > /tmp/twin_gz.log 2>&1 &
 PID=$!
@@ -18,7 +18,7 @@ INFO+="scan: $(timeout 10 ros2 topic echo --once --field header.frame_id /scan 2
 INFO+="imu: $(timeout 10 ros2 topic echo --once --field header.frame_id /imu/out 2>&1 | head -n1)"$'\n'
 INFO+="odom filtered: $(timeout 10 ros2 topic echo --once --field pose.pose.position.x /odometry/filtered 2>&1 | head -n1)"$'\n'
 sleep 60
-kill -INT $PID; wait $PID 2>/dev/null
+stop_group $PID
 CSV=$(ls /tmp/twin_gz_logs/*_gazebo.csv 2>/dev/null | tail -n1)
 FAIL=1
 if [ -n "$CSV" ]; then

@@ -21,7 +21,7 @@ check() {
   fi
 }
 
-ros2 launch bumperbot_digital_twin real_side.launch.py use_mock_hardware:=true use_ekf:=true real_domain:=10 \
+setsid ros2 launch bumperbot_digital_twin real_side.launch.py use_mock_hardware:=true use_ekf:=true real_domain:=10 \
   > /tmp/mock_stack.log 2>&1 &
 PID=$!
 sleep 30
@@ -37,12 +37,12 @@ timeout 6 ros2 topic pub -r 10 /key_vel geometry_msgs/msg/Twist "{linear: {x: 0.
 check "el robot avanza con key_vel" bash -c "x=\$(ros2 topic echo --once --field pose.pose.position.x /odometry/filtered | head -n1); echo x=\$x; python3 -c \"import sys; sys.exit(0 if float('\$x') > 0.3 else 1)\""
 
 mkdir -p /tmp/twin_mock_logs
-ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=hardware twin_mode:=fake rviz:=false \
+setsid ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=hardware twin_mode:=fake rviz:=false \
   leader:=real driver:=line_back driver_start_delay:=3.0 distance:=0.8 \
   log_dir:=/tmp/twin_mock_logs log_tag:=mock > /tmp/twin_mock.log 2>&1 &
 TPID=$!
 sleep 35
-kill -INT $TPID; wait $TPID 2>/dev/null
+stop_group $TPID
 CSV=$(ls /tmp/twin_mock_logs/*_mock.csv 2>/dev/null | tail -n1)
 if [ -n "$CSV" ]; then
   python3 -m bumperbot_digital_twin.analyze_log "$CSV" -o /tmp/twin_mock_res --no-plots > /tmp/twin_mock_summary.txt 2>&1
@@ -56,7 +56,7 @@ else
   FAIL=1
 fi
 
-kill -INT $PID; wait $PID 2>/dev/null
+stop_group $PID
 if [ $FAIL -eq 0 ]; then
   annotate notice "Robot real con mock hardware" "$RESULTS"
 else

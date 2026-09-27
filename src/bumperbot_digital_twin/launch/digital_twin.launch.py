@@ -45,7 +45,7 @@ def generate_launch_description():
                               description="true: corrige al seguidor con la odometría | false: solo copia comandos"),
         DeclareLaunchArgument("driver", default_value="none",
                               description="Recorrido automático del líder: none | line | line_back | square | circle | rotate | figure8"),
-        DeclareLaunchArgument("driver_start_delay", default_value="10.0"),
+        DeclareLaunchArgument("driver_start_delay", default_value="20.0"),
         DeclareLaunchArgument("linear_speed", default_value="0.15"),
         DeclareLaunchArgument("angular_speed", default_value="0.6"),
         DeclareLaunchArgument("distance", default_value="1.0"),
