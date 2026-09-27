@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Gemelo en Gazebo (sin interfaz gráfica) siguiendo a un robot real de mentira.
-set -u
+
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 source ci/annotate.sh

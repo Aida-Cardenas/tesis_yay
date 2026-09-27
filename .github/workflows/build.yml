@@ -62,6 +62,7 @@ jobs:
         run: bash ci/test_mock_stack.sh
 
       - name: Gemelo en Gazebo headless (experimental)
+        if: always()
         continue-on-error: true
         timeout-minutes: 10
         run: |

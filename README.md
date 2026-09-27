@@ -1,6 +1,6 @@
 # Gemelo digital de un robot móvil diferencial (WMR) — workspace ROS 2 Humble
 
-Workspace único con todo el software del prototipo: descripción URDF y simulación en Gazebo, control y odometría, fusión sensorial, localización, SLAM, planificación, navegación con Nav2 y la interfaz de hardware (Raspberry Pi + Arduino).
+Workspace único con todo el software del prototipo: descripción URDF y simulación en Gazebo, control y odometría, fusión sensorial (EKF), localización, SLAM, planificación, navegación con Nav2, la interfaz de hardware (Raspberry Pi + Arduino) y la **capa de comunicación bidireccional con el gemelo digital** ([`docs/GEMELO_DIGITAL.md`](docs/GEMELO_DIGITAL.md)).
 
 Trabajo Especial de Grado — Ingeniería de Sistemas, Universidad Metropolitana. Autora: Aida Cárdenas.
 
@@ -13,6 +13,7 @@ Trabajo Especial de Grado — Ingeniería de Sistemas, Universidad Metropolitana
 ```
 tesis-gemelo-digital-wmr/          <- esta carpeta ES el workspace (colcon build aquí)
 ├── src/
+│   ├── bumperbot_digital_twin  GEMELO DIGITAL: puente bidireccional real ↔ Gazebo, métricas, análisis (propio)
 │   ├── bumperbot_description   URDF/xacro, mallas, mundos de Gazebo, launch de simulación
 │   ├── bumperbot_controller    cinemática diferencial, odometría, teleoperación, twist_mux
 │   ├── bumperbot_firmware      ros2_control hardware interface (serial), driver IMU MPU6050, sketches Arduino
@@ -27,7 +28,9 @@ tesis-gemelo-digital-wmr/          <- esta carpeta ES el workspace (colcon build
 │   ├── bumperbot_cpp_examples  ejemplos de conceptos ROS 2 en C++
 │   └── bumperbot_py_examples   ejemplos de conceptos ROS 2 en Python
 ├── udev/90-bumperbot.rules     nombres fijos /dev/arduino y /dev/rplidar en la Raspberry Pi
+├── ci/                         scripts de pruebas automáticas (GitHub Actions)
 ├── install_dependencies.sh
+├── docs/GEMELO_DIGITAL.md      arquitectura, uso y métricas del gemelo digital
 └── docs/ORIGEN_DEL_CODIGO.md   qué vino de qué módulo y cómo se relaciona con la tesis
 ```
 
@@ -82,7 +85,10 @@ ros2 launch bumperbot_description display.launch.py
 | `map_name` | `small_house` | Mapa para AMCL, en `bumperbot_mapping/maps/<map_name>/map.yaml` |
 | `use_simple_controller` | `False` | `True`: nodo propio de cinemática/odometría (`simple_controller`). `False`: `diff_drive_controller` |
 | `use_python` | `False` | Con `use_simple_controller:=True`, usa la versión Python en lugar de C++ |
+| `use_ekf` | `true` | EKF (robot_localization) fusiona ruedas + IMU y publica `odom → base_footprint` |
 | `use_safety_stop` | `false` | Lanza `safety_stop` (frena/detiene si el LiDAR ve un obstáculo cerca) |
+| `use_rviz` / `gui` | `true` | Solo simulación: abrir RViz / la ventana de Gazebo |
+| `use_mock_hardware` | `false` | Solo robot real: sin Arduino, ruedas simuladas por ros2_control (para probar) |
 | `bt_xml` | `simple_navigation_w_replanning_and_recovery.xml` | Behavior tree de Nav2 (ruta completa) |
 | `arduino_port` | `/dev/arduino` | Puerto serie del Arduino (solo robot real) |
 
@@ -124,6 +130,21 @@ Luego se usa con `map_name:=mi_mapa`.
    ros2 run rviz2 rviz2 -d /opt/ros/humble/share/nav2_bringup/rviz/nav2_default_view.rviz
    ```
 
+## Gemelo digital
+
+Robot físico en la Raspberry Pi y gemelo en Gazebo en el PC, sincronizados:
+
+```bash
+# Raspberry Pi
+ros2 launch bumperbot_digital_twin real_side.launch.py real_domain:=10
+# PC
+ros2 launch bumperbot_digital_twin digital_twin.launch.py real_domain:=10 twin_domain:=20
+```
+
+Sin robot, todo en el PC: `ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake driver:=square`.
+
+Detalles, métricas y experimentos en [`docs/GEMELO_DIGITAL.md`](docs/GEMELO_DIGITAL.md).
+
 ## Demos individuales del curso
 
 | Tema | Comando |
@@ -139,4 +160,4 @@ Nav2 usa por defecto `SmacPlanner2D` y `RegulatedPurePursuitController`. Los plu
 
 ## Integración continua
 
-`.github/workflows/build.yml` compila el workspace completo en ROS 2 Humble en cada push y verifica que el URDF y todos los launch carguen. Si el check sale en verde en GitHub, compila.
+`.github/workflows/build.yml` compila el workspace completo en ROS 2 Humble en cada push, verifica que el URDF y todos los launch carguen y prueba el gemelo digital sin hardware (robots de mentira, robot real con hardware simulado y Gazebo sin ventana). Los resultados aparecen como anotaciones en la pestaña *Actions* de GitHub.

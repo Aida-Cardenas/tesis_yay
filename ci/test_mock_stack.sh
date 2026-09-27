@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Robot "real" completo (bumperbot_bringup/real_robot) con ros2_control mock hardware,
 # EKF y Nav2, y luego el gemelo digital conectado a ese robot.
-set -u
+
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 source ci/annotate.sh
