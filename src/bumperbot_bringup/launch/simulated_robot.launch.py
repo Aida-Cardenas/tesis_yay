@@ -16,6 +16,18 @@ def generate_launch_description():
         default_value="false"
     )
 
+    use_simple_controller_arg = DeclareLaunchArgument(
+        "use_simple_controller",
+        default_value="False",
+        description="True: own kinematics/odometry node (simple_controller). False: diff_drive_controller"
+    )
+
+    use_python_arg = DeclareLaunchArgument(
+        "use_python",
+        default_value="False",
+        description="With use_simple_controller:=True, use the Python node instead of the C++ one"
+    )
+
     use_safety_stop_arg = DeclareLaunchArgument(
         "use_safety_stop",
         default_value="false",
@@ -37,8 +49,8 @@ def generate_launch_description():
             "controller.launch.py"
         ),
         launch_arguments={
-            "use_simple_controller": "False",
-            "use_python": "False"
+            "use_simple_controller": LaunchConfiguration("use_simple_controller"),
+            "use_python": LaunchConfiguration("use_python")
         }.items(),
     )
     
@@ -102,6 +114,8 @@ def generate_launch_description():
     
     return LaunchDescription([
         use_slam_arg,
+        use_simple_controller_arg,
+        use_python_arg,
         use_safety_stop_arg,
         gazebo,
         controller,
