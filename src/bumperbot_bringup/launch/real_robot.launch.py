@@ -9,10 +9,17 @@ from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
     use_slam = LaunchConfiguration("use_slam")
+    use_safety_stop = LaunchConfiguration("use_safety_stop")
 
     use_slam_arg = DeclareLaunchArgument(
         "use_slam",
         default_value="false"
+    )
+
+    use_safety_stop_arg = DeclareLaunchArgument(
+        "use_safety_stop",
+        default_value="false",
+        description="Start the LiDAR safety_stop node (Map & Localization course)"
     )
 
     hardware_interface = IncludeLaunchDescription(
@@ -43,7 +50,8 @@ def generate_launch_description():
         ),
         launch_arguments={
             "use_simple_controller": "False",
-            "use_python": "False"
+            "use_python": "False",
+            "use_sim_time": "False"
         }.items(),
     )
     
@@ -58,6 +66,13 @@ def generate_launch_description():
         }.items()
     )
 
+    safety_stop = Node(
+        package="bumperbot_utils",
+        executable="safety_stop",
+        output="screen",
+        condition=IfCondition(use_safety_stop)
+    )
+
     imu_driver_node = Node(
         package="bumperbot_firmware",
         executable="mpu6050_driver.py"
@@ -69,6 +84,7 @@ def generate_launch_description():
             "launch",
             "global_localization.launch.py"
         ),
+        launch_arguments={"use_sim_time": "False"}.items(),
         condition=UnlessCondition(use_slam)
     )
 
@@ -78,6 +94,7 @@ def generate_launch_description():
             "launch",
             "slam.launch.py"
         ),
+        launch_arguments={"use_sim_time": "False"}.items(),
         condition=IfCondition(use_slam)
     )
 
@@ -87,15 +104,18 @@ def generate_launch_description():
             "launch",
             "navigation.launch.py"
         ),
+        launch_arguments={"use_sim_time": "False"}.items(),
     )
     
     return LaunchDescription([
         use_slam_arg,
+        use_safety_stop_arg,
         hardware_interface,
         laser_driver,
         controller,
         joystick,
         imu_driver_node,
+        safety_stop,
         localization,
         slam,
         navigation,

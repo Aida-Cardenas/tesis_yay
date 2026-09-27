@@ -1,0 +1,17 @@
+# Reglas udev para el robot (Raspberry Pi).
+# Crean nombres fijos /dev/rplidar y /dev/arduino sin importar en qué puerto USB se conecten.
+#
+# Instalar:
+#   sudo cp 90-bumperbot.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo service udev restart && sudo udevadm trigger
+#
+# Verificar los IDs de TUS dispositivos con:  lsusb
+#   RPLidar A1 (adaptador Silicon Labs CP210x) -> 10c4:ea60
+#   Arduino clon (chip CH340)                  -> 1a86:7523
+#   Arduino UNO original                       -> 2341:0043 (aparece como ttyACM*, descomentar la última línea)
+
+KERNEL=="ttyUSB*", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", MODE:="0777", SYMLINK+="rplidar"
+
+SUBSYSTEM=="tty", GROUP="plugdev", MODE="0660"
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="arduino"
+# SUBSYSTEMS=="usb", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0043", SYMLINK+="arduino"

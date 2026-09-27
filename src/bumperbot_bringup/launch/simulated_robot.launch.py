@@ -9,10 +9,17 @@ from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
     use_slam = LaunchConfiguration("use_slam")
+    use_safety_stop = LaunchConfiguration("use_safety_stop")
 
     use_slam_arg = DeclareLaunchArgument(
         "use_slam",
         default_value="false"
+    )
+
+    use_safety_stop_arg = DeclareLaunchArgument(
+        "use_safety_stop",
+        default_value="false",
+        description="Start the LiDAR safety_stop node (Map & Localization course)"
     )
 
     gazebo = IncludeLaunchDescription(
@@ -44,6 +51,14 @@ def generate_launch_description():
         launch_arguments={
             "use_sim_time": "True"
         }.items()
+    )
+
+    safety_stop = Node(
+        package="bumperbot_utils",
+        executable="safety_stop",
+        output="screen",
+        parameters=[{"use_sim_time": True}],
+        condition=IfCondition(use_safety_stop)
     )
 
     localization = IncludeLaunchDescription(
@@ -87,9 +102,11 @@ def generate_launch_description():
     
     return LaunchDescription([
         use_slam_arg,
+        use_safety_stop_arg,
         gazebo,
         controller,
         joystick,
+        safety_stop,
         localization,
         slam,
         navigation,

@@ -8,6 +8,9 @@
   <!-- Load Simulated or Real Hardware Interfaces -->
   <xacro:arg name="is_sim" default="true"/>
 
+  <!-- Serial port of the Arduino (real robot only). /dev/arduino is created by udev/90-bumperbot.rules -->
+  <xacro:arg name="arduino_port" default="/dev/arduino"/>
+
   <!-- Include Gazebo Parameters -->
   <xacro:include filename="$(find bumperbot_description)/urdf/bumperbot_gazebo.xacro" />
 

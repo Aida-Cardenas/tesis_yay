@@ -2,11 +2,18 @@ import os
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
-from launch.substitutions import Command
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import Command, LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
+
+    arduino_port_arg = DeclareLaunchArgument(
+        "arduino_port",
+        default_value="/dev/arduino",
+        description="Serial port of the Arduino board (e.g. /dev/arduino, /dev/ttyUSB0, /dev/ttyACM0)"
+    )
 
     robot_description = ParameterValue(
         Command(
@@ -17,7 +24,9 @@ def generate_launch_description():
                     "urdf",
                     "bumperbot.urdf.xacro",
                 ),
-                " is_sim:=False"
+                " is_sim:=False",
+                " arduino_port:=",
+                LaunchConfiguration("arduino_port"),
             ]
         ),
         value_type=str,
@@ -45,6 +54,7 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
+            arduino_port_arg,
             robot_state_publisher_node,
             controller_manager,
         ]
