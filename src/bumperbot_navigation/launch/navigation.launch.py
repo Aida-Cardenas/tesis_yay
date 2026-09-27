@@ -19,6 +19,16 @@ def generate_launch_description():
         default_value="true"
     )
 
+    bt_xml_arg = DeclareLaunchArgument(
+        "bt_xml",
+        default_value=os.path.join(
+            bumperbot_navigation_pkg,
+            "behavior_tree",
+            "simple_navigation_w_replanning_and_recovery.xml"
+        ),
+        description="Full path to the behavior tree used by bt_navigator"
+    )
+
     nav2_controller_server = Node(
         package="nav2_controller",
         executable="controller_server",
@@ -70,7 +80,8 @@ def generate_launch_description():
                 bumperbot_navigation_pkg,
                 "config",
                 "bt_navigator.yaml"),
-            {"use_sim_time": use_sim_time}
+            {"use_sim_time": use_sim_time,
+             "default_nav_to_pose_bt_xml": LaunchConfiguration("bt_xml")}
         ],
     )
 
@@ -102,6 +113,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         use_sim_time_arg,
+        bt_xml_arg,
         nav2_controller_server,
         nav2_planner_server,
         nav2_smoother_server,
