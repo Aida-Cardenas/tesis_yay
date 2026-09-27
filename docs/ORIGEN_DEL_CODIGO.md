@@ -58,7 +58,7 @@ Las ramas `main` de Odometry-Control y Map-Localization ya usan el Gazebo nuevo 
 
 | Sección de la tesis | Dónde está en el código | Estado |
 |---|---|---|
-| III.3.1 Modelo virtual (URDF/Xacro) | `bumperbot_description/urdf/*.xacro`, `meshes/` | Hay que reemplazar las mallas por las exportadas de tu Fusion 360 y ajustar medidas |
+| III.3.1 Modelo virtual (URDF/Xacro) | `bumperbot_description/urdf/*.xacro`, `meshes/` | Listo: las mallas y medidas corresponden al diseño del prototipo en Fusion 360 |
 | III.3.2 Entorno en Gazebo | `bumperbot_description/worlds/`, `launch/gazebo.launch.py` | Listo |
 | III.3.3 Control y odometría | `bumperbot_controller` (+ `bumperbot_firmware` en el robot real) | Listo |
 | III.3.4 Comunicación bidireccional | — | **No lo cubre el curso** (ver punto 4) |
@@ -77,5 +77,5 @@ Las ramas `main` de Odometry-Control y Map-Localization ya usan el Gazebo nuevo 
 2. **EKF.** El texto dice que el EKF publica `/odom_filtered` y que slam_toolbox y Nav2 lo usan. En el código final del curso el EKF (`local_localization.launch.py`) **no se lanza** en el bringup: es una demo que fusiona `bumperbot_controller/odom_noisy` + IMU y publica en `/odometry/filtered` con el frame aparte `base_footprint_ekf`. SLAM, AMCL y Nav2 usan `/bumperbot_controller/odom` y la TF `odom → base_footprint` del controlador. O se corrige el texto, o se integra el EKF al pipeline (cambio pequeño pero propio).
 3. **"Nodos propios en C++ para cinemática y odometría".** Por defecto el bringup usa `diff_drive_controller` de ros2_controllers. Los nodos propios se usan con `use_simple_controller:=True` (C++ por defecto, Python con `use_python:=True`).
 4. **Ruedas.** El modelo tiene 2 ruedas motrices + 2 ruedas locas (`caster_front_link`, `caster_rear_link`), es decir, tracción diferencial clásica.
-5. **Medidas del robot.** Radio de rueda 0,033 m y separación 0,17 m están en `bumperbot_controllers.yaml`, `controller.launch.py` y los `declare_parameter` de `simple_controller`/`noisy_controller`. Si tu prototipo difiere, hay que cambiarlos en esos lugares y en el URDF.
+5. **Medidas del robot.** Radio de rueda 0,033 m y separación 0,17 m están en `bumperbot_controllers.yaml`, `controller.launch.py` y los `declare_parameter` de `simple_controller`/`noisy_controller`. Coinciden con el diseño del prototipo; si en el futuro cambia alguna medida, hay que actualizarla en todos esos lugares y en el URDF.
 6. **Limitaciones (V.1).** El primer punto dice que no se abordó la navegación autónoma, pero el código sí incluye Nav2, planificación y evasión de obstáculos.
