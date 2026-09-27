@@ -40,7 +40,13 @@ En cada ciclo (20 Hz) el puente:
    `ex`, `ey`, `eθ` son el error longitudinal, lateral y de orientación en el marco del seguidor. Las velocidades se saturan (más bajo si el seguidor es el robot real).
 4. **Seguridad.** Si los datos de un robot tienen más de 0,5 s, deja de mandar (el seguidor se detiene). Si el error supera 0,75 m, suspende la corrección y marca `lost_sync`.
 
-Con `feedback:=false` el puente solo copia comandos (espejo en lazo abierto). Comparar ambos modos es un buen experimento para la tesis: en simulación, con un 10 % de diferencia de velocidad entre los robots, el espejo acaba a 65 cm del líder tras un cuadrado de 1 m y la realimentación a menos de 1 cm.
+Con `feedback:=false` el puente solo copia comandos (espejo en lazo abierto). Comparar ambos modos es un buen experimento para la tesis. En las pruebas automáticas (dos robots simulados con 10 % de diferencia de velocidad, cuadrado de 0,6 m a 0,3 m/s):
+
+| Líder | Corrección | Error medio | Error máximo | Error final |
+|---|---|---|---|---|
+| real | sí | 0,8 cm | 2,2 cm | 0,4 cm |
+| real | no (espejo) | 14,7 cm | 23,7 cm | 23,6 cm |
+| gemelo | sí | 1,1 cm | 2,6 cm | 0,9 cm |
 
 ## 3. Métricas
 
@@ -120,6 +126,18 @@ Genera `resumen.md` (tabla lista para la tesis), `resumen.json` y, por cada expe
 2. El puente con dos robots de mentira en dos dominios: líder real con y sin realimentación, y líder gemelo.
 3. El robot real completo con hardware simulado (ros2_control mock) + EKF + Nav2, y el gemelo siguiéndolo.
 4. El gemelo en Gazebo sin ventana (experimental: depende de que el servidor de GitHub pueda renderizar el LiDAR).
+
+Resultados de la corrida del 27 de septiembre de 2026 (todas con realimentación salvo la indicada):
+
+| Prueba | Recorrido | Error medio | Error máximo | Error final | RTT medio |
+|---|---|---|---|---|---|
+| Robots de mentira, líder real | cuadrado 0,6 m | 1,0 cm | 2,2 cm | 0,8 cm | 1,7 ms |
+| Robots de mentira, líder real, sin realimentación | cuadrado 0,6 m | 15,2 cm | 23,9 cm | 23,7 cm | 0,6 ms |
+| Robots de mentira, líder gemelo | cuadrado 0,6 m | 1,0 cm | 2,6 cm | 0,9 cm | 0,6 ms |
+| Robot real con mock hardware + EKF + Nav2, gemelo de mentira | ida y vuelta 0,8 m | 1,0 cm | 1,8 cm | 1,6 cm | 0,5 ms |
+| **Gemelo en Gazebo** siguiendo a un robot real de mentira | cuadrado 0,8 m | 0,5 cm | 3,1 cm | 0,7 cm | 1,2 ms |
+
+La latencia aquí es local (todo en una máquina); con la Raspberry Pi por Wi-Fi será mayor y es lo que mide la Prueba 5.
 
 ## 7. Limitaciones conocidas
 

@@ -71,11 +71,12 @@ Las ramas `main` de Odometry-Control y Map-Localization ya usan el Gazebo nuevo 
 | Prueba 4 — Encoders | `ros2 topic echo /joint_states` girando las ruedas a mano | — |
 | Prueba 5 — Sincronización | — | Depende de III.3.4 |
 
-## 4. Diferencias entre el texto actual de la tesis y lo que hace el código
+## 4. Diferencias entre el texto actual de la tesis y el código
 
-1. **Comunicación bidireccional físico–virtual (III.3.4, Prueba 5).** El curso lanza el robot real **o** el simulado, nunca los dos sincronizados. La capa que conecta ambos (por ejemplo, reflejar en Gazebo la odometría del robot real y mandar los mismos comandos a los dos, con medición de latencia) es el aporte propio de la tesis y hay que desarrollarla aparte.
-2. **EKF.** El texto dice que el EKF publica `/odom_filtered` y que slam_toolbox y Nav2 lo usan. En el código final del curso el EKF (`local_localization.launch.py`) **no se lanza** en el bringup: es una demo que fusiona `bumperbot_controller/odom_noisy` + IMU y publica en `/odometry/filtered` con el frame aparte `base_footprint_ekf`. SLAM, AMCL y Nav2 usan `/bumperbot_controller/odom` y la TF `odom → base_footprint` del controlador. O se corrige el texto, o se integra el EKF al pipeline (cambio pequeño pero propio).
-3. **"Nodos propios en C++ para cinemática y odometría".** Por defecto el bringup usa `diff_drive_controller` de ros2_controllers. Los nodos propios se usan con `use_simple_controller:=True` (C++ por defecto, Python con `use_python:=True`).
+1. **Comunicación bidireccional (III.3.4, Prueba 5).** El curso lanza el robot real **o** el simulado. La capa que los conecta y sincroniza es el aporte propio de la tesis: paquete `bumperbot_digital_twin`, descrito en [`GEMELO_DIGITAL.md`](GEMELO_DIGITAL.md).
+2. **EKF.** En el curso el EKF era una demo aparte. Ahora está integrado al sistema completo y activo por defecto (`use_ekf:=true`): publica `/odometry/filtered` (no `/odom_filtered`) y la TF `odom → base_footprint` que usan SLAM, AMCL y Nav2.
+3. **"Nodos propios en C++ para cinemática y odometría".** Por defecto se usa `diff_drive_controller` de ros2_controllers. Los nodos propios se usan con `use_simple_controller:=True` (C++ por defecto, Python con `use_python:=True`); en ese modo el EKF no se lanza porque esos nodos publican su propia TF.
 4. **Ruedas.** El modelo tiene 2 ruedas motrices + 2 ruedas locas (`caster_front_link`, `caster_rear_link`), es decir, tracción diferencial clásica.
-5. **Medidas del robot.** Radio de rueda 0,033 m y separación 0,17 m están en `bumperbot_controllers.yaml`, `controller.launch.py` y los `declare_parameter` de `simple_controller`/`noisy_controller`. Coinciden con el diseño del prototipo; si en el futuro cambia alguna medida, hay que actualizarla en todos esos lugares y en el URDF.
-6. **Limitaciones (V.1).** El primer punto dice que no se abordó la navegación autónoma, pero el código sí incluye Nav2, planificación y evasión de obstáculos.
+5. **Medidas del robot.** Radio de rueda 0,033 m y separación 0,17 m están en `bumperbot_controllers.yaml`, `controller.launch.py` y los `declare_parameter` de `simple_controller`/`noisy_controller`. Coinciden con el diseño del prototipo; si alguna cambia, hay que actualizarla en todos esos lugares y en el URDF.
+6. **Simulador.** El capítulo III.1 menciona `gazebo_ros_pkgs`, que es del Gazebo viejo (Classic). El sistema usa Gazebo Fortress con `ros_gz`.
+7. **Limitaciones (V.1).** El primer punto dice que no se abordó la navegación autónoma, pero el código sí incluye Nav2, planificación y evasión de obstáculos.
