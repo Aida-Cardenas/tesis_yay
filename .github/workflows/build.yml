@@ -1,4 +1,4 @@
-name: build (ROS 2 Humble)
+name: build y pruebas (ROS 2 Humble)
 
 on:
   push:
@@ -9,6 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     container: ros:humble
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -20,7 +21,7 @@ jobs:
           apt-get update
           rosdep update --rosdistro humble
           rosdep install --from-paths src --ignore-src --rosdistro humble -r -y
-          apt-get install -y python3-transforms3d liburdfdom-tools
+          apt-get install -y python3-transforms3d liburdfdom-tools python3-pytest ros-humble-key-teleop
 
       - name: colcon build
         run: |
@@ -32,9 +33,37 @@ jobs:
           source install/setup.bash
           xacro src/bumperbot_description/urdf/bumperbot.urdf.xacro > /tmp/sim.urdf
           xacro src/bumperbot_description/urdf/bumperbot.urdf.xacro is_sim:=false > /tmp/real.urdf
+          xacro src/bumperbot_description/urdf/bumperbot.urdf.xacro is_sim:=false use_mock_hardware:=true > /tmp/mock.urdf
           check_urdf /tmp/sim.urdf
           check_urdf /tmp/real.urdf
+          check_urdf /tmp/mock.urdf
           for f in src/*/launch/*.launch.py; do
             python3 -c "import importlib.util,sys; s=importlib.util.spec_from_file_location('l','$f'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); m.generate_launch_description()" \
               && echo "OK  $f" || { echo "FALLA $f"; exit 1; }
           done
+
+      - name: Pruebas del gemelo digital (unitarias + dos robots de mentira)
+        run: |
+          source install/setup.bash
+          source ci/annotate.sh
+          export ROS_LOCALHOST_ONLY=1
+          export TWIN_TEST_REPORT=/tmp/twin_report.txt
+          set +e
+          python3 -m pytest src/bumperbot_digital_twin/test -v -p no:cacheprovider > /tmp/pytest.log 2>&1
+          code=$?
+          set -e
+          cat /tmp/pytest.log
+          annotate notice "Pytest resumen" "$(grep -E 'passed|failed|PASSED|FAILED|ERROR' /tmp/pytest.log | tail -n 40)"
+          [ -f /tmp/twin_report.txt ] && annotate notice "Sincronización con robots de mentira" "$(cat /tmp/twin_report.txt)"
+          if [ $code -ne 0 ]; then annotate error "Pytest fallos" "$(tail -n 80 /tmp/pytest.log)"; fi
+          exit $code
+
+      - name: Robot real con mock hardware + EKF + Nav2 + gemelo
+        run: bash ci/test_mock_stack.sh
+
+      - name: Gemelo en Gazebo headless (experimental)
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          apt-get install -y libegl1 libgl1-mesa-dri mesa-utils > /dev/null
+          bash ci/test_gazebo_twin.sh

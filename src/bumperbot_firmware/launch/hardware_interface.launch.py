@@ -15,6 +15,12 @@ def generate_launch_description():
         description="Serial port of the Arduino board (e.g. /dev/arduino, /dev/ttyUSB0, /dev/ttyACM0)"
     )
 
+    use_mock_hardware_arg = DeclareLaunchArgument(
+        "use_mock_hardware",
+        default_value="false",
+        description="true: ros2_control mock hardware instead of the Arduino"
+    )
+
     robot_description = ParameterValue(
         Command(
             [
@@ -27,6 +33,8 @@ def generate_launch_description():
                 " is_sim:=False",
                 " arduino_port:=",
                 LaunchConfiguration("arduino_port"),
+                " use_mock_hardware:=",
+                LaunchConfiguration("use_mock_hardware"),
             ]
         ),
         value_type=str,
@@ -55,6 +63,7 @@ def generate_launch_description():
     return LaunchDescription(
         [
             arduino_port_arg,
+            use_mock_hardware_arg,
             robot_state_publisher_node,
             controller_manager,
         ]

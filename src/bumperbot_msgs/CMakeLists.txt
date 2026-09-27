@@ -7,13 +7,15 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/Fibonacci.action"
   "srv/AddTwoInts.srv"
   "srv/GetTransform.srv"
-  DEPENDENCIES geometry_msgs
+  "msg/TwinSyncStatus.msg"
+  DEPENDENCIES geometry_msgs builtin_interfaces
 )
 
 ament_package()

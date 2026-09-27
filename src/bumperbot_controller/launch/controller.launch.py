@@ -1,7 +1,10 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction, OpaqueFunction
 from launch_ros.actions import Node
-from launch.substitutions import LaunchConfiguration
+import os
+
+from ament_index_python.packages import get_package_share_directory
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch.conditions import UnlessCondition, IfCondition
 
 
@@ -54,6 +57,11 @@ def generate_launch_description():
         "use_python",
         default_value="False",
     )
+    use_ekf_arg = DeclareLaunchArgument(
+        "use_ekf",
+        default_value="False",
+        description="True: the EKF publishes odom -> base_footprint instead of diff_drive_controller",
+    )
     wheel_radius_arg = DeclareLaunchArgument(
         "wheel_radius",
         default_value="0.033",
@@ -87,6 +95,8 @@ def generate_launch_description():
         ],
     )
 
+    use_ekf = LaunchConfiguration("use_ekf")
+
     wheel_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
@@ -94,7 +104,24 @@ def generate_launch_description():
                    "--controller-manager", 
                    "/controller_manager"
         ],
-        condition=UnlessCondition(use_simple_controller),
+        condition=IfCondition(PythonExpression([
+            "'", use_simple_controller, "'.lower() not in ('true', '1') and '",
+            use_ekf, "'.lower() not in ('true', '1')"])),
+    )
+
+    wheel_controller_spawner_ekf = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["bumperbot_controller",
+                   "--controller-manager",
+                   "/controller_manager",
+                   "--param-file",
+                   os.path.join(get_package_share_directory("bumperbot_controller"),
+                                "config", "ekf_override.yaml"),
+        ],
+        condition=IfCondition(PythonExpression([
+            "'", use_simple_controller, "'.lower() not in ('true', '1') and '",
+            use_ekf, "'.lower() in ('true', '1')"])),
     )
 
     simple_controller = GroupAction(
@@ -136,12 +163,14 @@ def generate_launch_description():
             use_sim_time_arg,
             use_simple_controller_arg,
             use_python_arg,
+            use_ekf_arg,
             wheel_radius_arg,
             wheel_separation_arg,
             wheel_radius_error_arg,
             wheel_separation_error_arg,
             joint_state_broadcaster_spawner,
             wheel_controller_spawner,
+            wheel_controller_spawner_ekf,
             simple_controller,
             noisy_controller_launch,
         ]

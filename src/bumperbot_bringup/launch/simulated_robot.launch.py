@@ -2,7 +2,7 @@ import os
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.conditions import IfCondition, UnlessCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 
@@ -28,6 +28,17 @@ def generate_launch_description():
         description="With use_simple_controller:=True, use the Python node instead of the C++ one"
     )
 
+    use_rviz_arg = DeclareLaunchArgument(
+        "use_rviz",
+        default_value="true"
+    )
+
+    use_ekf_arg = DeclareLaunchArgument(
+        "use_ekf",
+        default_value="true",
+        description="EKF (robot_localization) fuses wheel odometry and IMU and publishes odom -> base_footprint"
+    )
+
     use_safety_stop_arg = DeclareLaunchArgument(
         "use_safety_stop",
         default_value="false",
@@ -50,7 +61,8 @@ def generate_launch_description():
         ),
         launch_arguments={
             "use_simple_controller": LaunchConfiguration("use_simple_controller"),
-            "use_python": LaunchConfiguration("use_python")
+            "use_python": LaunchConfiguration("use_python"),
+            "use_ekf": LaunchConfiguration("use_ekf")
         }.items(),
     )
     
@@ -71,6 +83,18 @@ def generate_launch_description():
         output="screen",
         parameters=[{"use_sim_time": True}],
         condition=IfCondition(use_safety_stop)
+    )
+
+    ekf = IncludeLaunchDescription(
+        os.path.join(
+            get_package_share_directory("bumperbot_localization"),
+            "launch",
+            "ekf.launch.py"
+        ),
+        launch_arguments={"use_sim_time": "True"}.items(),
+        condition=IfCondition(PythonExpression([
+            "'", LaunchConfiguration("use_ekf"), "'.lower() in ('true', '1') and '",
+            LaunchConfiguration("use_simple_controller"), "'.lower() not in ('true', '1')"])),
     )
 
     localization = IncludeLaunchDescription(
@@ -110,17 +134,21 @@ def generate_launch_description():
         ],
         output="screen",
         parameters=[{"use_sim_time": True}],
+        condition=IfCondition(LaunchConfiguration("use_rviz")),
     )
     
     return LaunchDescription([
         use_slam_arg,
         use_simple_controller_arg,
         use_python_arg,
+        use_rviz_arg,
+        use_ekf_arg,
         use_safety_stop_arg,
         gazebo,
         controller,
         joystick,
         safety_stop,
+        ekf,
         localization,
         slam,
         navigation,

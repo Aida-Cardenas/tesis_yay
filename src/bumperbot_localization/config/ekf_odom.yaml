@@ -1,0 +1,40 @@
+# EKF del sistema completo (robot_localization).
+# Fusiona la odometría de las ruedas con la velocidad angular de la IMU y publica
+# la TF odom -> base_footprint y el tópico /odometry/filtered.
+# Cuando está activo, diff_drive_controller deja de publicar esa TF
+# (bumperbot_controller/config/ekf_override.yaml).
+ekf_odom_node:
+  ros__parameters:
+    frequency: 30.0
+    sensor_timeout: 0.1
+    two_d_mode: true
+    publish_tf: true
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_footprint
+    world_frame: odom
+
+    # Orden de cada vector:
+    # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
+    odom0: bumperbot_controller/odom
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  true,  false,
+                   false, false, true,
+                   false, false, false]
+    odom0_differential: false
+    odom0_relative: false
+
+    # La IMU aporta la velocidad angular. Para fusionar también la aceleración
+    # lineal, poner true en ax (posición 13) si la IMU no es muy ruidosa.
+    imu0: imu/out
+    imu0_config: [false, false, false,
+                  false, false, false,
+                  false, false, false,
+                  false, false, true,
+                  false, false, false]
+    imu0_differential: false
+    imu0_relative: false
+    imu0_remove_gravitational_acceleration: true
+
+    print_diagnostics: false

@@ -14,3 +14,7 @@ twist_mux:
         topic   : cmd_vel
         timeout : 0.5
         priority: 80
+      digital_twin:
+        topic   : twin_vel
+        timeout : 0.5
+        priority: 95

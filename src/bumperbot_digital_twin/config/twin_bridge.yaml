@@ -1,0 +1,33 @@
+twin_bridge:
+  ros__parameters:
+    leader: real
+    odom_topic: /bumperbot_controller/odom
+    cmd_topic: /bumperbot_controller/cmd_vel
+    follow_topic: twin_vel
+    odom_frame: odom
+    rate: 20.0
+
+    feedback: true
+    feedforward_source: cmd
+    kx: 1.5
+    ky: 6.0
+    ktheta: 3.0
+    max_linear: 0.5
+    max_angular: 2.5
+    real_max_linear: 0.3
+    real_max_angular: 1.5
+
+    state_timeout: 0.5
+    cmd_timeout: 0.3
+    position_tolerance: 0.02
+    heading_tolerance: 0.03
+    max_correction_error: 0.75
+    auto_align: true
+
+    measure_rtt: true
+    ping_rate: 5.0
+
+    log_enabled: true
+    log_dir: ~/twin_logs
+    log_tag: ""
+    path_max_len: 5000

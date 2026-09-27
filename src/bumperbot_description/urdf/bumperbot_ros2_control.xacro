@@ -22,10 +22,18 @@
 
         <!-- ros2_control Real Robot -->
         <xacro:unless value="$(arg is_sim)">
-            <hardware>
-                <plugin>bumperbot_firmware/BumperbotInterface</plugin>
-                <param name="port">$(arg arduino_port)</param>
-            </hardware>
+            <xacro:if value="$(arg use_mock_hardware)">
+                <hardware>
+                    <plugin>mock_components/GenericSystem</plugin>
+                    <param name="calculate_dynamics">true</param>
+                </hardware>
+            </xacro:if>
+            <xacro:unless value="$(arg use_mock_hardware)">
+                <hardware>
+                    <plugin>bumperbot_firmware/BumperbotInterface</plugin>
+                    <param name="port">$(arg arduino_port)</param>
+                </hardware>
+            </xacro:unless>
         </xacro:unless>
         
         <!-- ros2_control Common Interfaces -->

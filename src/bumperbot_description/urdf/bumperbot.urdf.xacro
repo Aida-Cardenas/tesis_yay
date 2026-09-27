@@ -11,6 +11,9 @@
   <!-- Serial port of the Arduino (real robot only). /dev/arduino is created by udev/90-bumperbot.rules -->
   <xacro:arg name="arduino_port" default="/dev/arduino"/>
 
+  <!-- Real robot without Arduino: ros2_control mock hardware (for tests and dry runs) -->
+  <xacro:arg name="use_mock_hardware" default="false"/>
+
   <!-- Include Gazebo Parameters -->
   <xacro:include filename="$(find bumperbot_description)/urdf/bumperbot_gazebo.xacro" />
 

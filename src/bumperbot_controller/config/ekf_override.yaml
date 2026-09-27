@@ -1,0 +1,5 @@
+# Se carga sobre bumperbot_controllers.yaml cuando use_ekf:=true:
+# la TF odom -> base_footprint la publica el EKF, no el controlador.
+bumperbot_controller:
+  ros__parameters:
+    enable_odom_tf: false

@@ -24,6 +24,9 @@ def generate_launch_description():
 
     world_name_arg = DeclareLaunchArgument(name="world_name", default_value="empty")
 
+    gui_arg = DeclareLaunchArgument(name="gui", default_value="true",
+                                    description="false: Gazebo server only (headless)")
+
     world_path = PathJoinSubstitution([
             bumperbot_description,
             "worlds",
@@ -62,7 +65,9 @@ def generate_launch_description():
                 PythonLaunchDescriptionSource([os.path.join(
                     get_package_share_directory("ros_gz_sim"), "launch"), "/gz_sim.launch.py"]),
                 launch_arguments={
-                    "gz_args": PythonExpression(["'", world_path, " -v 4 -r'"])
+                    "gz_args": PythonExpression(["'", world_path, " -v 4 -r' + ('' if '",
+                                                 LaunchConfiguration("gui"),
+                                                 "'.lower() in ('true', '1') else ' -s --headless-rendering')"])
                 }.items()
              )
 
@@ -90,6 +95,7 @@ def generate_launch_description():
     return LaunchDescription([
         model_arg,
         world_name_arg,
+        gui_arg,
         gazebo_resource_path,
         robot_state_publisher_node,
         gazebo,

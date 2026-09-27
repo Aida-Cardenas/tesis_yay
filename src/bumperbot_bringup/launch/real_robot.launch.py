@@ -2,7 +2,7 @@ import os
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.conditions import IfCondition, UnlessCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 
@@ -28,6 +28,23 @@ def generate_launch_description():
         description="With use_simple_controller:=True, use the Python node instead of the C++ one"
     )
 
+    use_mock_hardware_arg = DeclareLaunchArgument(
+        "use_mock_hardware",
+        default_value="false",
+        description="true: no Arduino, wheels emulated by ros2_control mock hardware"
+    )
+
+    arduino_port_arg = DeclareLaunchArgument(
+        "arduino_port",
+        default_value="/dev/arduino"
+    )
+
+    use_ekf_arg = DeclareLaunchArgument(
+        "use_ekf",
+        default_value="true",
+        description="EKF (robot_localization) fuses wheel odometry and IMU and publishes odom -> base_footprint"
+    )
+
     use_safety_stop_arg = DeclareLaunchArgument(
         "use_safety_stop",
         default_value="false",
@@ -40,6 +57,10 @@ def generate_launch_description():
             "launch",
             "hardware_interface.launch.py"
         ),
+        launch_arguments={
+            "use_mock_hardware": LaunchConfiguration("use_mock_hardware"),
+            "arduino_port": LaunchConfiguration("arduino_port"),
+        }.items(),
     )
 
     laser_driver = Node(
@@ -63,6 +84,7 @@ def generate_launch_description():
         launch_arguments={
             "use_simple_controller": LaunchConfiguration("use_simple_controller"),
             "use_python": LaunchConfiguration("use_python"),
+            "use_ekf": LaunchConfiguration("use_ekf"),
             "use_sim_time": "False"
         }.items(),
     )
@@ -88,6 +110,18 @@ def generate_launch_description():
     imu_driver_node = Node(
         package="bumperbot_firmware",
         executable="mpu6050_driver.py"
+    )
+
+    ekf = IncludeLaunchDescription(
+        os.path.join(
+            get_package_share_directory("bumperbot_localization"),
+            "launch",
+            "ekf.launch.py"
+        ),
+        launch_arguments={"use_sim_time": "False"}.items(),
+        condition=IfCondition(PythonExpression([
+            "'", LaunchConfiguration("use_ekf"), "'.lower() in ('true', '1') and '",
+            LaunchConfiguration("use_simple_controller"), "'.lower() not in ('true', '1')"])),
     )
 
     localization = IncludeLaunchDescription(
@@ -123,6 +157,9 @@ def generate_launch_description():
         use_slam_arg,
         use_simple_controller_arg,
         use_python_arg,
+        use_mock_hardware_arg,
+        arduino_port_arg,
+        use_ekf_arg,
         use_safety_stop_arg,
         hardware_interface,
         laser_driver,
@@ -130,6 +167,7 @@ def generate_launch_description():
         joystick,
         imu_driver_node,
         safety_stop,
+        ekf,
         localization,
         slam,
         navigation,
