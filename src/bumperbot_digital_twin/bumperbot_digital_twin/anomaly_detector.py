@@ -99,8 +99,11 @@ class AnomalyDetectorNode(Node):
             msg.kind, msg.phase, msg.severity = ev.kind, ev.phase, ev.severity
             msg.value, msg.description = float(ev.value), ev.description
             self.pub.publish(msg)
-            log = self.get_logger().warn if ev.phase == "inicio" else self.get_logger().info
-            log(f"{ev.kind} {ev.phase}: {ev.description} ({ev.value:.3f})")
+            text = f"{ev.kind} {ev.phase}: {ev.description} ({ev.value:.3f})"
+            if ev.phase == "inicio":
+                self.get_logger().warn(text)
+            else:
+                self.get_logger().info(text)
             if self.writer:
                 self.writer.writerow([f"{t:.4f}", ev.kind, ev.phase, ev.severity, f"{ev.value:.4f}", ev.description])
                 self.log_file.flush()

@@ -57,6 +57,7 @@ class FakeRobot(Node):
         self.arena = [float(x) for x in dp("arena", [0.0], ParameterDescriptor(dynamic_typing=True)).value]
         self.scan_noise = dp("scan_noise", 0.0).value
         self.scan_rate = dp("scan_rate", 5.0).value
+        self.laser_yaw = dp("laser_yaw", 3.14).value
         self.rng = random.Random(dp("seed", 1).value)
 
         self.inputs = {}
@@ -180,7 +181,7 @@ class FakeRobot(Node):
 
     def _scan(self):
         p = self.true_pose
-        ranges = raycast_rectangle(p.x, p.y, p.theta, self.arena, self.scan_angles, 12.0)
+        ranges = raycast_rectangle(p.x, p.y, p.theta + self.laser_yaw, self.arena, self.scan_angles, 12.0)
         if self.scan_noise > 0:
             ranges = ranges + np.array([self.rng.gauss(0.0, self.scan_noise) for _ in ranges])
         msg = LaserScan()

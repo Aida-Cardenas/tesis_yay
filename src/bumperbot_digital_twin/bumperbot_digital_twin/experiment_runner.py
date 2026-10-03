@@ -139,6 +139,7 @@ class Runner:
         return True
 
     def calibrate(self, step):
+        self.configure(new_log=True, log_tag="calibracion")
         sources = []
         for name in step["calibrate_from"]:
             sources += self.logs.get(name, [])

@@ -16,6 +16,17 @@ from geometry_msgs.msg import Twist
 from bumperbot_digital_twin.trajectories import build_segments
 
 
+def spin_resilient(executor, context, logger):
+    """Como executor.spin(), pero una excepción en un callback se registra en vez de matar el hilo."""
+    while rclpy.ok(context=context):
+        try:
+            executor.spin_once(timeout_sec=0.1)
+        except Exception as exc:
+            if not rclpy.ok(context=context):
+                break
+            logger.error(f"Error en un callback: {exc!r}")
+
+
 class DualDomain:
     """Un nodo en el dominio del robot real y otro en el del gemelo, cada uno con su ejecutor."""
 
@@ -34,7 +45,8 @@ class DualDomain:
         for side in ("real", "twin"):
             ex = SingleThreadedExecutor(context=self.contexts[side])
             ex.add_node(self.nodes[side])
-            threading.Thread(target=ex.spin, daemon=True).start()
+            threading.Thread(target=spin_resilient, daemon=True,
+                             args=(ex, self.contexts[side], self.nodes[side].get_logger())).start()
             self.executors.append(ex)
 
     def ok(self):

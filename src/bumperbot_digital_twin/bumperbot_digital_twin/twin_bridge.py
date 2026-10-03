@@ -70,6 +70,7 @@ from bumperbot_digital_twin.geometry import (
     yaw_from_quaternion,
 )
 from bumperbot_digital_twin.netem import NetworkEmulator
+from bumperbot_digital_twin.ros_util import spin_resilient
 from bumperbot_digital_twin.scan_compare import bin_scan, compare_scans
 
 SIDES = ("real", "twin")
@@ -472,8 +473,11 @@ class TwinBridge:
             self.event_writer.writerow([f"{time.time():.4f}", source, kind, phase, severity,
                                         f"{value:.4f}", description])
             self.event_file.flush()
-        level = self.main.get_logger().warn if phase == "inicio" else self.main.get_logger().info
-        level(f"Anomalía [{source}] {kind} {phase}: {description} ({value:.3f})")
+        text = f"Anomalía [{source}] {kind} {phase}: {description} ({value:.3f})"
+        if phase == "inicio":
+            self.main.get_logger().warn(text)
+        else:
+            self.main.get_logger().info(text)
 
     def _detector_event_cb(self, msg):
         with self.lock:
@@ -825,7 +829,7 @@ def main():
     for node, ctx in ((real_node, ctx_real), (twin_node, ctx_twin)):
         ex = SingleThreadedExecutor(context=ctx)
         ex.add_node(node)
-        threading.Thread(target=ex.spin, daemon=True).start()
+        threading.Thread(target=spin_resilient, args=(ex, ctx, node.get_logger()), daemon=True).start()
         executors.append(ex)
     try:
         while rclpy.ok(context=ctx_real) and rclpy.ok(context=ctx_twin):

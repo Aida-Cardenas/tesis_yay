@@ -150,6 +150,10 @@ def test_experiment_protocol(tmp_path):
     finally:
         stop(proc, out)
     (tmp_path / "runner.log").write_text(runner.stdout + runner.stderr)
+    sizes = {os.path.basename(p)[16:]: sum(1 for _ in open(p)) - 1
+             for p in sorted(glob.glob(str(tmp_path / "logs" / "twin_*.csv")))
+             if not p.endswith(("_scan.csv", "_eventos.csv"))}
+    report(f"protocolo_ci filas por registro: {sizes}")
     assert runner.returncode == 0, runner.stdout[-3000:] + runner.stderr[-3000:]
     data = json.load(open(out_dir / "informe.json"))
     table = data["experimentos"]
