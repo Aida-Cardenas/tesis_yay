@@ -105,3 +105,31 @@ def integrate_unicycle(pose, v, w, dt):
         pose.y - r * (math.cos(theta_new) - math.cos(pose.theta)),
         wrap_angle(theta_new),
     )
+
+
+def smith_predict(pose, sent_commands, now, observation_delay, command_delay, step=0.05):
+    """Predictor de Smith: dónde estará el seguidor cuando le llegue el próximo comando.
+
+    `pose` es la última pose observada, que salió del robot hace `observation_delay`
+    segundos. Los comandos enviados (lista de (instante_envío, v, ω)) tardan
+    `command_delay` en llegar, así que se reproducen los que ya están "en vuelo" para
+    llevar la pose desde now - observation_delay hasta now + command_delay.
+    """
+    t = now - observation_delay
+    end = now + command_delay
+    idx = -1
+    v = w = 0.0
+    commands = list(sent_commands)
+    while idx + 1 < len(commands) and commands[idx + 1][0] <= t - command_delay + 1e-9:
+        idx += 1
+    if idx >= 0:
+        v, w = commands[idx][1], commands[idx][2]
+    while t < end - 1e-9:
+        next_change = commands[idx + 1][0] + command_delay if idx + 1 < len(commands) else end
+        h = min(step, end - t, max(next_change - t, 1e-6))
+        pose = integrate_unicycle(pose, v, w, h)
+        t += h
+        while idx + 1 < len(commands) and commands[idx + 1][0] <= t - command_delay + 1e-9:
+            idx += 1
+            v, w = commands[idx][1], commands[idx][2]
+    return pose

@@ -1,0 +1,30 @@
+# Mismo protocolo en simulación: gemelo en Gazebo y robot real de mentira
+# (real_mode:=fake). Corre sin intervención:
+#   ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake fake_real_tau:=0.3 fake_real_gain:=0.85
+#   ros2 run bumperbot_digital_twin twin_experiment protocolo_simulacion --auto
+name: protocolo_simulacion
+defaults:
+  repetitions: 2
+  leader: real
+  linear_speed: 0.15
+  angular_speed: 0.6
+  distance: 1.0
+  settle: 3.0
+
+experiments:
+  - {name: S1, description: Cuadrado con corrección, pattern: square}
+  - {name: S2, description: Cuadrado solo copiando comandos, pattern: square, feedback: false}
+  - {name: S3, description: El robot real sigue al gemelo, pattern: square, leader: twin}
+  - {name: CAL, calibrate_from: [S1, S2]}
+  - {name: S4, description: Solo copia comandos con gemelo calibrado, pattern: square, feedback: false, twin_model: true}
+  - {name: L0, description: Sin retardo emulado, pattern: square, net_delay_ms: 0}
+  - {name: L150, description: 150 ms sin compensación, pattern: square, net_delay_ms: 150}
+  - {name: L150C, description: 150 ms con compensación, pattern: square, net_delay_ms: 150, compensation: true}
+  - {name: L300, description: 300 ms sin compensación, pattern: square, net_delay_ms: 300}
+  - {name: L300C, description: 300 ms con compensación, pattern: square, net_delay_ms: 300, compensation: true}
+
+comparisons:
+  - [S1, S2]
+  - [S2, S4]
+  - [L150, L150C]
+  - [L300, L300C]

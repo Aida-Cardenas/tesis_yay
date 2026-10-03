@@ -4,6 +4,7 @@ twin_bridge:
     odom_topic: /bumperbot_controller/odom
     cmd_topic: /bumperbot_controller/cmd_vel
     follow_topic: twin_vel
+    scan_topic: /scan
     odom_frame: odom
     rate: 20.0
 
@@ -26,6 +27,26 @@ twin_bridge:
 
     measure_rtt: true
     ping_rate: 5.0
+    compensation: false
+    compensation_extra_ms: 0.0
+
+    twin_model: false
+    twin_model_file: ""
+
+    net_delay_ms: 0.0
+    net_jitter_ms: 0.0
+    net_loss: 0.0
+    net_seed: 7
+
+    scan_compare: true
+    relay_real_scan: true
+    real_scan_frame: laser_link
+    scan_compare_rate: 2.0
+    scan_sync_tolerance: 0.05
+    scan_max_linear: 0.05
+    scan_max_angular: 0.3
+
+    latency_alert_ms: 250.0
 
     log_enabled: true
     log_dir: ~/twin_logs

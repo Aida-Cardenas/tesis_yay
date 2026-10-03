@@ -30,6 +30,16 @@ Visualization Manager:
       Color Transformer: FlatColor
       Color: 0; 170; 255
       Value: true
+    - Class: rviz_default_plugins/LaserScan
+      Name: LiDAR del robot real
+      Enabled: true
+      Topic:
+        Value: /digital_twin/real_scan
+        Reliability Policy: Best Effort
+      Size (m): 0.03
+      Color Transformer: FlatColor
+      Color: 230; 60; 60
+      Value: true
     - Class: rviz_default_plugins/Path
       Name: Trayectoria robot real
       Enabled: true

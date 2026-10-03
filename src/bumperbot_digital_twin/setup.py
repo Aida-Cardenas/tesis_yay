@@ -6,7 +6,7 @@ package_name = 'bumperbot_digital_twin'
 
 setup(
     name=package_name,
-    version='0.1.0',
+    version='0.2.0',
     packages=[package_name],
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
@@ -29,6 +29,11 @@ setup(
             'scripted_driver = bumperbot_digital_twin.scripted_driver:main',
             'latency_echo = bumperbot_digital_twin.latency_echo:main',
             'analyze_twin_log = bumperbot_digital_twin.analyze_log:main',
+            'anomaly_detector = bumperbot_digital_twin.anomaly_detector:main',
+            'twin_calibrate = bumperbot_digital_twin.calibrate:main',
+            'twin_report = bumperbot_digital_twin.report:main',
+            'twin_experiment = bumperbot_digital_twin.experiment_runner:main',
+            'twin_dashboard = bumperbot_digital_twin.dashboard:main',
         ],
     },
 )

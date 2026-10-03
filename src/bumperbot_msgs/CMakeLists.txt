@@ -12,6 +12,9 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/TwinSyncStatus.msg"
+  "msg/TwinAnomaly.msg"
+  "msg/ScanComparison.msg"
+  "srv/TwinConfigure.srv"
   DEPENDENCIES geometry_msgs builtin_interfaces
 )
 

@@ -1,48 +1,68 @@
 import csv
 import math
-import os
+
+from conftest import bridge_columns
 
 from bumperbot_digital_twin import analyze_log
 
-COLUMNS = [
-    "t", "leader", "feedback", "active", "lost_sync", "stale",
-    "pos_error", "yaw_error", "ex", "ey",
-    "leader_x", "leader_y", "leader_yaw",
-    "follower_x", "follower_y", "follower_yaw",
-    "real_x", "real_y", "real_yaw", "real_v", "real_w",
-    "twin_x", "twin_y", "twin_yaw", "twin_v", "twin_w",
-    "ff_v", "ff_w", "cmd_v", "cmd_w",
-    "rtt_ms", "real_odom_age_ms", "leader_cmd_age_ms",
-]
 
-
-def test_columns_match_bridge():
-    import re
-    here = os.path.dirname(__file__)
-    src = open(os.path.join(here, "..", "bumperbot_digital_twin", "twin_bridge.py")).read()
-    cols = eval(re.search(r"CSV_COLUMNS = (\[.*?\])", src, re.S).group(1))
-    assert cols == COLUMNS
+def write_run(path, lag_s=0.2, err=0.01, n=400, leader="real", feedback=1, extra=None):
+    cols = bridge_columns()
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(cols)
+        for i in range(n):
+            t = i * 0.05
+            v = 0.2 if 2 < t < 15 else 0.0
+            fv = 0.2 if 2 + lag_s < t < 15 + lag_s else 0.0
+            row = {c: 0.0 for c in cols}
+            row.update(t=1000 + t, leader=leader, feedback=feedback, active=1, pos_error=err, pos_error_raw=err,
+                       yaw_error=0.01, leader_x=t * 0.1, follower_x=t * 0.1 - err,
+                       real_x=t * 0.1, twin_x=t * 0.1 - err, real_stamp=1000 + t,
+                       real_v=v if leader == "real" else fv, twin_v=fv if leader == "real" else v,
+                       ff_v=v, rtt_ms=10.0 + (i % 5), real_odom_age_ms=math.nan, leader_cmd_age_ms=5.0,
+                       anomalies="")
+            row.update(extra or {})
+            w.writerow([row[c] for c in cols])
+    return path
 
 
 def test_analyze_synthetic(tmp_path):
-    path = tmp_path / "twin_test.csv"
-    with open(path, "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(COLUMNS)
-        for i in range(400):
-            t = i * 0.05
-            v = 0.2 if 2 < t < 15 else 0.0
-            fv = 0.2 if 2.2 < t < 15.2 else 0.0
-            err = 0.01
-            row = {c: 0.0 for c in COLUMNS}
-            row.update(t=1000 + t, leader="real", feedback=1, active=1, pos_error=err, yaw_error=0.01,
-                       leader_x=t * 0.1, follower_x=t * 0.1 - err, real_v=v, twin_v=fv, ff_v=v,
-                       rtt_ms=10.0 + (i % 5), real_odom_age_ms=math.nan, leader_cmd_age_ms=5.0)
-            w.writerow([row[c] for c in COLUMNS])
+    path = write_run(tmp_path / "twin_20260101_000000_test.csv")
     out = tmp_path / "out"
     assert analyze_log.main([str(path), "-o", str(out)]) == 0
     s = analyze_log.analyze(str(path), str(out), plots=False)
     assert abs(s["error_posicion_m"]["media"] - 0.01) < 1e-9
+    assert abs(s["error_real_m"]["media"] - 0.01) < 1e-6
     assert 150 <= s["retardo_sincronizacion_ms"] <= 250
     assert (out / "resumen.md").exists()
-    assert (out / "twin_test_trayectorias.png").exists()
+    assert (out / "twin_20260101_000000_test_trayectorias.png").exists()
+
+
+def test_true_error_uses_timestamps(tmp_path):
+    path = write_run(tmp_path / "twin_20260101_000000_x.csv")
+    d = analyze_log.load(str(path))
+    d["real_stamp"] = d["real_stamp"] - 0.5
+    e = analyze_log.true_error(d)
+    finite = e[~__import__("numpy").isnan(e)]
+    assert finite.size > 100
+    assert abs(finite.mean() - (0.01 + 0.05)) < 0.01
+
+
+def test_scan_and_events_summary(tmp_path):
+    path = write_run(tmp_path / "twin_20260101_000000_y.csv")
+    with open(tmp_path / "twin_20260101_000000_y_scan.csv", "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(bridge_columns("SCAN_COLUMNS"))
+        for i in range(5):
+            w.writerow([1000 + i, 300, 0.02, 0.025, 0.001, 0.04, 0.95, 0.96, 0.98, 0.01])
+    with open(tmp_path / "twin_20260101_000000_y_eventos.csv", "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(bridge_columns("EVENT_COLUMNS"))
+        w.writerow([1001, "detector", "atasco", "inicio", 2, 0.1, "x"])
+        w.writerow([1003, "detector", "atasco", "fin", 2, 0.1, "x"])
+    s = analyze_log.analyze(str(path), str(tmp_path), plots=False)
+    assert s["lidar"]["comparaciones"] == 5
+    assert abs(s["lidar"]["mae_m"] - 0.02) < 1e-9
+    assert s["anomalias"] == {"atasco": 1}
+    assert "atasco" in analyze_log.markdown([s])

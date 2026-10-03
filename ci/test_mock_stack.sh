@@ -32,6 +32,7 @@ check "EKF publica odometry filtered" bash -c "ros2 topic echo --once /odometry/
 check "TF odom a base_footprint" bash -c "timeout 8 ros2 run tf2_ros tf2_echo odom base_footprint 2>&1 | grep -m1 Translation"
 check "Nav2 controller_server activo" bash -c "ros2 lifecycle get /controller_server | grep -i active"
 check "Nav2 bt_navigator activo" bash -c "ros2 lifecycle get /bt_navigator | grep -i active"
+check "detector de anomalías activo" bash -c "ros2 node list | grep anomaly_detector"
 check "twist_mux con entrada twin_vel" bash -c "ros2 param get /twist_mux topics.digital_twin.topic | grep twin_vel"
 timeout 6 ros2 topic pub -r 10 /key_vel geometry_msgs/msg/Twist "{linear: {x: 0.2}}" > /dev/null 2>&1
 check "el robot avanza con key_vel" bash -c "x=\$(ros2 topic echo --once --field pose.pose.position.x /odometry/filtered | head -n1); echo x=\$x; python3 -c \"import sys; sys.exit(0 if float('\$x') > 0.3 else 1)\""

@@ -1,0 +1,24 @@
+# Configura el puente del gemelo digital en una sola llamada.
+# Los campos con valor "sin cambio" se ignoran.
+
+# "" sin cambio, "real" o "twin"
+string leader
+# -1 sin cambio, 0 apagar, 1 encender
+int8 feedback
+int8 compensation
+int8 twin_model
+# Red emulada en el enlace con el robot real. Negativo = sin cambio.
+float64 net_delay_ms
+float64 net_jitter_ms
+float64 net_loss
+# Realinear los dos robots ahora
+bool align
+# Cerrar el registro actual y abrir uno nuevo con esta etiqueta
+bool new_log
+string log_tag
+# Cargar otro modelo dinámico para el gemelo (twin_calibrate dynamics). "" sin cambio.
+string twin_model_file
+---
+bool success
+string message
+string log_path

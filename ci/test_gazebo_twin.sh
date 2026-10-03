@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Gemelo en Gazebo (sin interfaz gráfica) siguiendo a un robot real de mentira.
+# Gemelo en Gazebo (sin interfaz gráfica) siguiendo a un robot real de mentira, ambos
+# en el mismo recinto para comparar el LiDAR simulado por Gazebo con el de mentira.
 
 source /opt/ros/humble/setup.bash
 source install/setup.bash
@@ -8,6 +9,7 @@ export ROS_LOCALHOST_ONLY=1
 
 mkdir -p /tmp/twin_gz_logs
 setsid ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake twin_mode:=gazebo gui:=false rviz:=false \
+  world_name:=arena arena:=[-0.5,2.0,-1.0,1.0] \
   leader:=real driver:=square driver_start_delay:=40.0 linear_speed:=0.2 distance:=0.8 \
   log_dir:=/tmp/twin_gz_logs log_tag:=gazebo > /tmp/twin_gz.log 2>&1 &
 PID=$!

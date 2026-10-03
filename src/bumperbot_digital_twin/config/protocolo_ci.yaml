@@ -1,0 +1,25 @@
+# Protocolo corto para las pruebas automáticas (dos robots de mentira).
+name: protocolo_ci
+defaults:
+  repetitions: 2
+  leader: real
+  pattern: square
+  linear_speed: 0.3
+  angular_speed: 1.0
+  distance: 0.6
+  pause: 0.5
+  settle: 2.0
+
+experiments:
+  - {name: M, description: Solo copia comandos, feedback: false}
+  - {name: CAL, calibrate_from: [M]}
+  - {name: MC, description: Solo copia comandos con gemelo calibrado, feedback: false, twin_model: true}
+  - {name: D, description: 200 ms sin compensación, net_delay_ms: 200}
+  - {name: DC, description: 200 ms con compensación, net_delay_ms: 200, compensation: true}
+  - {name: R, description: Real sigue al gemelo con 300 ms, leader: twin, net_delay_ms: 300}
+  - {name: RC, description: Real sigue al gemelo con 300 ms y predictor de Smith, leader: twin, net_delay_ms: 300, compensation: true}
+
+comparisons:
+  - [M, MC]
+  - [D, DC]
+  - [R, RC]

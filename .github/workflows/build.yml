@@ -48,15 +48,27 @@ jobs:
           source ci/annotate.sh
           export ROS_LOCALHOST_ONLY=1
           export TWIN_TEST_REPORT=/tmp/twin_report.txt
+          export QT_QPA_PLATFORM=offscreen
           set +e
-          python3 -m pytest src/bumperbot_digital_twin/test -v -p no:cacheprovider > /tmp/pytest.log 2>&1
+          python3 -m pytest src/bumperbot_digital_twin/test -v -p no:cacheprovider --durations=10 > /tmp/pytest.log 2>&1
           code=$?
           set -e
           cat /tmp/pytest.log
           annotate notice "Pytest resumen" "$(grep -E 'passed|failed|PASSED|FAILED|ERROR' /tmp/pytest.log | tail -n 40)"
-          [ -f /tmp/twin_report.txt ] && annotate notice "Sincronización con robots de mentira" "$(cat /tmp/twin_report.txt)"
-          if [ $code -ne 0 ]; then annotate error "Pytest fallos" "$(tail -n 80 /tmp/pytest.log)"; fi
+          [ -f /tmp/twin_report.txt ] && annotate notice "Integración con robots de mentira" "$(cat /tmp/twin_report.txt)"
+          if [ $code -ne 0 ]; then
+            annotate error "Pytest fallos" "$(grep -E '^E |Error|assert' /tmp/pytest.log | head -n 60)"
+            for f in /tmp/pytest-of-*/pytest-*/test_*/runner.log /tmp/pytest-of-*/pytest-*/test_*/launch.log; do
+              [ -f "$f" ] && annotate warning "$(basename $(dirname $f))/$(basename $f)" "$(grep -iE 'error|exception|traceback|fail|anomal' $f | tail -n 25)"
+            done
+          fi
           exit $code
+
+      - name: Panel de control (captura sin pantalla)
+        if: always()
+        run: |
+          source install/setup.bash
+          QT_QPA_PLATFORM=offscreen ros2 run bumperbot_digital_twin twin_dashboard --selftest /tmp/panel.png
 
       - name: Robot real con mock hardware + EKF + Nav2 + gemelo
         run: bash ci/test_mock_stack.sh

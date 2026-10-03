@@ -1,0 +1,107 @@
+# Protocolo de la Prueba 5 con el robot físico.
+#   ros2 run bumperbot_digital_twin twin_experiment protocolo_real
+# Entre corridas el programa pide colocar el robot en la marca de salida.
+name: protocolo_real
+defaults:
+  repetitions: 3
+  leader: real
+  linear_speed: 0.15
+  angular_speed: 0.6
+  distance: 1.0
+  settle: 3.0
+
+experiments:
+  - name: E1
+    description: Línea recta de 1 m, el gemelo sigue al robot con corrección
+    pattern: line
+  - name: E2
+    description: Línea recta de 1 m, el gemelo solo copia comandos
+    pattern: line
+    feedback: false
+  - name: E3
+    description: Cuadrado de 1 m con corrección
+    pattern: square
+  - name: E4
+    description: Cuadrado de 1 m, solo copia comandos
+    pattern: square
+    feedback: false
+  - name: E5
+    description: Círculo de 0,5 m de radio con corrección
+    pattern: circle
+  - name: E6
+    description: Cuadrado de 1 m, el robot real sigue al gemelo
+    pattern: square
+    leader: twin
+
+  - name: CAL
+    calibrate_from: [E1, E2, E3, E4, E5]
+    output: modelo_gemelo.yaml
+
+  - name: E7
+    description: Cuadrado de 1 m, solo copia comandos, gemelo calibrado
+    pattern: square
+    feedback: false
+    twin_model: true
+
+  - name: L100
+    description: Red con 100 ms de retardo, sin compensación
+    pattern: square
+    repetitions: 2
+    net_delay_ms: 100
+    net_jitter_ms: 10
+  - name: L100C
+    description: Red con 100 ms de retardo, con compensación
+    pattern: square
+    repetitions: 2
+    net_delay_ms: 100
+    net_jitter_ms: 10
+    compensation: true
+  - name: L250
+    description: Red con 250 ms de retardo, sin compensación
+    pattern: square
+    repetitions: 2
+    net_delay_ms: 250
+    net_jitter_ms: 20
+  - name: L250C
+    description: Red con 250 ms de retardo, con compensación
+    pattern: square
+    repetitions: 2
+    net_delay_ms: 250
+    net_jitter_ms: 20
+    compensation: true
+  - name: L250R
+    description: Red con 250 ms, el robot real sigue al gemelo, sin compensación
+    pattern: square
+    repetitions: 2
+    leader: twin
+    net_delay_ms: 250
+    net_jitter_ms: 20
+  - name: L250RC
+    description: Red con 250 ms, el robot real sigue al gemelo, con predictor de Smith
+    pattern: square
+    repetitions: 2
+    leader: twin
+    net_delay_ms: 250
+    net_jitter_ms: 20
+    compensation: true
+
+  - name: A1
+    description: Atasco provocado
+    pattern: line
+    distance: 1.5
+    repetitions: 2
+    instructions: Cuando el robot haya avanzado unos 50 cm, sujétalo con la mano 2 segundos.
+  - name: A2
+    description: Robot empujado sin comando
+    pattern: free
+    duration: 15
+    repetitions: 2
+    instructions: Sin tocar el joystick, empuja el robot unos 30 cm con la mano.
+
+comparisons:
+  - [E1, E2]
+  - [E3, E4]
+  - [E4, E7]
+  - [L100, L100C]
+  - [L250, L250C]
+  - [L250R, L250RC]

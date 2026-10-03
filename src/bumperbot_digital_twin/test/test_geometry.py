@@ -82,3 +82,13 @@ def test_closed_loop_converges_despite_model_error():
         v, w = tracking_command(0.2, 0.3, err, TrackingGains())
         follower = integrate_unicycle(follower, 0.9 * v, 0.9 * w, dt)
     assert follower.distance_to(leader) < 0.03
+
+
+def test_smith_predictor_replays_commands_in_flight():
+    from bumperbot_digital_twin.geometry import smith_predict
+    sent = [(k * 0.05, 0.2, 0.0) for k in range(21)]
+    p = smith_predict(Pose2D(), sent, 1.0, 0.2, 0.2)
+    assert p.x == pytest.approx(0.08, abs=1e-6)
+    sent = [(k * 0.05, 0.2 if k * 0.05 < 0.9 else 0.0, 0.0) for k in range(21)]
+    assert smith_predict(Pose2D(), sent, 1.0, 0.2, 0.2).x == pytest.approx(0.06, abs=1e-6)
+    assert smith_predict(Pose2D(1, 2, 0.5), [], 1.0, 0.0, 0.0) == Pose2D(1, 2, 0.5)
