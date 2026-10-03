@@ -19,13 +19,13 @@ def generate_launch_description():
     use_simple_controller_arg = DeclareLaunchArgument(
         "use_simple_controller",
         default_value="False",
-        description="True: own kinematics/odometry node (simple_controller). False: diff_drive_controller"
+        description="True: own C++ kinematics/odometry node (simple_controller). False: diff_drive_controller"
     )
 
-    use_python_arg = DeclareLaunchArgument(
-        "use_python",
-        default_value="False",
-        description="With use_simple_controller:=True, use the Python node instead of the C++ one"
+    calibration_file_arg = DeclareLaunchArgument(
+        "calibration_file",
+        default_value="",
+        description="Wheel calibration YAML produced by twin_calibrate wheels"
     )
 
     use_rviz_arg = DeclareLaunchArgument(
@@ -61,7 +61,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             "use_simple_controller": LaunchConfiguration("use_simple_controller"),
-            "use_python": LaunchConfiguration("use_python"),
+            "calibration_file": LaunchConfiguration("calibration_file"),
             "use_ekf": LaunchConfiguration("use_ekf")
         }.items(),
     )
@@ -140,7 +140,7 @@ def generate_launch_description():
     return LaunchDescription([
         use_slam_arg,
         use_simple_controller_arg,
-        use_python_arg,
+        calibration_file_arg,
         use_rviz_arg,
         use_ekf_arg,
         use_safety_stop_arg,

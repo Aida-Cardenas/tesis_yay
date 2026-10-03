@@ -8,10 +8,8 @@
   <license>Apache 2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
-  <buildtool_depend>ament_cmake_python</buildtool_depend>
 
   <depend>rclcpp</depend>
-  <depend>rclpy</depend>
   <depend>nav_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>tf2</depend>
@@ -21,8 +19,6 @@
   <depend>nav2_costmap_2d</depend>
   <depend>nav2_util</depend>
   <depend>pluginlib</depend>
-
-  <exec_depend>tf_transformations</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
