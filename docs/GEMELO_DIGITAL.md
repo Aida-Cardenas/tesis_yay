@@ -212,7 +212,36 @@ Análisis de una corrida: `ros2 run bumperbot_digital_twin analyze_twin_log ~/tw
 6. El robot real completo con hardware simulado (ros2_control mock) + EKF + Nav2 + detector, y el gemelo siguiéndolo.
 7. El gemelo en Gazebo sin ventana, en el recinto, siguiendo a un robot real de mentira (experimental).
 
-<!--RESULTADOS-->
+Resultados de la corrida automática del 3 de octubre de 2026 (60 de 60 pruebas aprobadas; todo simulado, en un solo computador):
+
+**Sincronización y LiDAR** (robot "real" de mentira y gemelo con 10 % menos de velocidad, cuadrado de 0,6 m a 0,3 m/s, ambos en un recinto de 2 × 2 m):
+
+| Líder | Corrección | Error medio | Error máximo | Error final | MAE del LiDAR | Anomalías |
+|---|---|---|---|---|---|---|
+| real | sí | 1,0 cm | 2,2 cm | 0,8 cm | 1,9 cm | ninguna |
+| real | no (espejo) | 15,5 cm | 24,5 cm | 24,4 cm | 1,6 cm | ninguna |
+| gemelo | sí | 1,0 cm | 2,2 cm | 0,9 cm | 2,2 cm | ninguna |
+
+**Fallas inyectadas:** atasco, deslizamiento y empujón se detectaron cada uno como su tipo, sin falsas alarmas de los otros.
+
+**Protocolo completo** (`protocolo_ci` con `twin_experiment --auto`, 2 repeticiones; el robot "real" de mentira tiene K = 0,85, τ = 0,3 s y 0,1 s de retardo, y el gemelo responde casi ideal):
+
+| Experimento | RMSE de posición | Reducción |
+|---|---|---|
+| M: solo copia comandos | 24,3 cm | |
+| MC: solo copia comandos, gemelo calibrado | 2,8 cm | −88 % |
+| D: red de 200 ms, sin compensación | 3,3 cm | |
+| DC: red de 200 ms, con compensación | 1,9 cm | −42 % |
+| R: el real sigue al gemelo, red de 300 ms | 26,9 cm | |
+| RC: lo mismo con predictor de Smith | 11,5 cm | −57 % |
+
+Las tres mejoras fueron significativas en la prueba t de Welch (p < 0,05). El modelo identificado a partir de M fue K = 0,86, τ = 0,34 s y L = 0,05 s (R² = 0,999), cercano a los valores con que se configuró el robot de mentira (el ajuste reparte parte del retardo en τ).
+
+**Gemelo en Gazebo** (física, EKF y Nav2) siguiendo al robot de mentira en el recinto `arena`: error medio 0,5 cm, máximo 2,7 cm; LiDAR de Gazebo frente al de mentira: MAE 2,2 cm, coincidencia de visibilidad 99,7 %.
+
+**Robot real con hardware simulado** (ros2_control mock + EKF + Nav2 + detector, 10 comprobaciones aprobadas) y gemelo siguiéndolo en un ida y vuelta de 0,8 m: error medio 1,0 cm, máximo 1,5 cm.
+
+La latencia de red en estas pruebas es local (menos de 2 ms); con la Raspberry Pi por Wi-Fi será mayor, y es lo que mide `protocolo_real`.
 
 ## 13. Limitaciones conocidas
 
