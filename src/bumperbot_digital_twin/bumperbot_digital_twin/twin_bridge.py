@@ -70,7 +70,7 @@ from bumperbot_digital_twin.geometry import (
     yaw_from_quaternion,
 )
 from bumperbot_digital_twin.netem import NetworkEmulator
-from bumperbot_digital_twin.ros_util import spin_resilient
+from bumperbot_digital_twin.ros_util import SpinThread, shutdown_all
 from bumperbot_digital_twin.scan_compare import bin_scan, compare_scans
 
 SIDES = ("real", "twin")
@@ -825,25 +825,22 @@ def main():
     ])
     bridge = TwinBridge(real_node, twin_node)
 
-    executors = []
+    spinners = []
     for node, ctx in ((real_node, ctx_real), (twin_node, ctx_twin)):
         ex = SingleThreadedExecutor(context=ctx)
         ex.add_node(node)
-        threading.Thread(target=spin_resilient, args=(ex, ctx, node.get_logger()), daemon=True).start()
-        executors.append(ex)
+        spinners.append(SpinThread(ex, ctx, node.get_logger()))
     try:
         while rclpy.ok(context=ctx_real) and rclpy.ok(context=ctx_twin):
             time.sleep(0.2)
     except KeyboardInterrupt:
         pass
     finally:
+        for sp in spinners:
+            sp.stop()
         with bridge.lock:
             bridge._close_log()
-        for ex in executors:
-            ex.shutdown(timeout_sec=1.0)
-        for ctx in (ctx_real, ctx_twin):
-            if ctx.ok():
-                rclpy.shutdown(context=ctx)
+        shutdown_all([], (real_node, twin_node), (ctx_real, ctx_twin))
     return 0
 
 

@@ -16,15 +16,44 @@ from geometry_msgs.msg import Twist
 from bumperbot_digital_twin.trajectories import build_segments
 
 
-def spin_resilient(executor, context, logger):
-    """Como executor.spin(), pero una excepción en un callback se registra en vez de matar el hilo."""
-    while rclpy.ok(context=context):
+class SpinThread:
+    """Hilo que atiende un ejecutor. Una excepción en un callback se registra en vez de matar
+    el hilo, y stop() lo detiene antes de cerrar el contexto (si no, rclpy aborta al salir)."""
+
+    def __init__(self, executor, context, logger):
+        self.executor = executor
+        self.context = context
+        self.logger = logger
+        self.stop_event = threading.Event()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+
+    def _run(self):
+        while not self.stop_event.is_set() and rclpy.ok(context=self.context):
+            try:
+                self.executor.spin_once(timeout_sec=0.1)
+            except Exception as exc:
+                if self.stop_event.is_set() or not rclpy.ok(context=self.context):
+                    break
+                self.logger.error(f"Error en un callback: {exc!r}")
+
+    def stop(self):
+        self.stop_event.set()
+        self.thread.join(timeout=2.0)
+        self.executor.shutdown(timeout_sec=1.0)
+
+
+def shutdown_all(spinners, nodes, contexts):
+    for sp in spinners:
+        sp.stop()
+    for node in nodes:
         try:
-            executor.spin_once(timeout_sec=0.1)
-        except Exception as exc:
-            if not rclpy.ok(context=context):
-                break
-            logger.error(f"Error en un callback: {exc!r}")
+            node.destroy_node()
+        except Exception:
+            pass
+    for ctx in contexts:
+        if ctx.ok():
+            rclpy.shutdown(context=ctx)
 
 
 class DualDomain:
@@ -41,13 +70,11 @@ class DualDomain:
             "twin": Node(name, context=self.contexts["twin"], parameter_overrides=[
                 Parameter("use_sim_time", value=twin_sim_time)]),
         }
-        self.executors = []
+        self.spinners = []
         for side in ("real", "twin"):
             ex = SingleThreadedExecutor(context=self.contexts[side])
             ex.add_node(self.nodes[side])
-            threading.Thread(target=spin_resilient, daemon=True,
-                             args=(ex, self.contexts[side], self.nodes[side].get_logger())).start()
-            self.executors.append(ex)
+            self.spinners.append(SpinThread(ex, self.contexts[side], self.nodes[side].get_logger()))
 
     def ok(self):
         return all(rclpy.ok(context=c) for c in self.contexts.values())
@@ -65,11 +92,7 @@ class DualDomain:
         return future.result()
 
     def shutdown(self):
-        for ex in self.executors:
-            ex.shutdown(timeout_sec=1.0)
-        for c in self.contexts.values():
-            if c.ok():
-                rclpy.shutdown(context=c)
+        shutdown_all(self.spinners, self.nodes.values(), self.contexts.values())
 
 
 class TrajectoryPlayer:
