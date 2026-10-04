@@ -37,6 +37,7 @@ setup(
             'twin_tune = bumperbot_digital_twin.tune:main',
             'twin_navigate = bumperbot_digital_twin.nav_preview:main',
             'fake_navigator = bumperbot_digital_twin.fake_navigator:main',
+            'twin_odom_meter = bumperbot_digital_twin.odom_meter:main',
         ],
     },
 )

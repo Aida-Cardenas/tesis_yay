@@ -37,6 +37,13 @@ check "twist_mux con entrada twin_vel" bash -c "ros2 param get /twist_mux topics
 timeout 6 ros2 topic pub -r 10 /key_vel geometry_msgs/msg/Twist "{linear: {x: 0.2}}" > /dev/null 2>&1
 check "el robot avanza con key_vel" bash -c "x=\$(ros2 topic echo --once --field pose.pose.position.x /odometry/filtered | head -n1); echo x=\$x; python3 -c \"import sys; sys.exit(0 if float('\$x') > 0.3 else 1)\""
 
+timeout -s INT 9 ros2 run bumperbot_digital_twin twin_odom_meter > /tmp/odom_meter.txt 2>&1 &
+MPID=$!
+sleep 2
+timeout 5 ros2 topic pub -r 10 /key_vel geometry_msgs/msg/Twist "{linear: {x: 0.2}}" > /dev/null 2>&1
+wait $MPID
+check "medidor de odometría" bash -c "grep 'Resultado final' /tmp/odom_meter.txt && python3 -c \"import re,sys; m=re.search(r'Resultado final: distancia desde la salida: ([0-9.]+)', open('/tmp/odom_meter.txt').read()); sys.exit(0 if m and float(m.group(1)) > 0.3 else 1)\""
+
 mkdir -p /tmp/twin_mock_logs
 setsid ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=hardware twin_mode:=fake rviz:=false \
   leader:=real driver:=line_back driver_start_delay:=3.0 distance:=0.8 \

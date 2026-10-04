@@ -142,7 +142,7 @@ class RosActions:
         self._async(lambda: self.dual.call("twin", self.switch_client, self.Trigger.Request()).message)
 
     def align(self):
-        self._async(lambda: self._configure(align=True).message)
+        self._async(lambda: self._configure(align=True, resume_sync=True).message)
 
     def set_flags(self, feedback, compensation, twin_model):
         self._async(lambda: self._configure(feedback=int(feedback), compensation=int(compensation),

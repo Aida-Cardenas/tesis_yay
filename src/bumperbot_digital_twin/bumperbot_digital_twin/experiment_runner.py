@@ -23,7 +23,7 @@ import yaml
 from ament_index_python.packages import get_package_share_directory
 
 from bumperbot_msgs.srv import TwinConfigure
-from bumperbot_digital_twin.calibrate import fit_channel, read_identification_data
+from bumperbot_digital_twin.calibrate import fit_channel, plot_fit, read_identification_data
 from bumperbot_digital_twin.dynamics import TwinModel
 from bumperbot_digital_twin.report import build_report
 from bumperbot_digital_twin.tuning import DEFAULT_GAINS
@@ -196,14 +196,18 @@ class Runner:
         output = os.path.join(self.session_dir, step.get("output", "modelo_gemelo.yaml"))
         chunks = read_identification_data(sources)
         model = TwinModel(source=", ".join(os.path.basename(s) for s in sources))
+        fits = {}
         for channel in ("linear", "angular"):
             try:
-                m, t, _, _ = fit_channel(chunks[channel], 0.6)
+                m, t, u, y = fit_channel(chunks[channel], 0.6)
                 m.samples = int(len(t))
                 setattr(model, channel, m)
+                fits[channel] = (m, t, u, y)
                 print(f"   {channel}: K={m.gain:.3f} τ={m.tau:.3f}s L={m.delay:.3f}s R²={m.r2:.3f}")
             except ValueError as exc:
                 print(f"   {channel}: {exc}")
+        if fits and not self.args.no_plots:
+            plot_fit(model, fits, os.path.splitext(output)[0] + "_ajuste.png")
         model.save(output)
         self.model_path = output
         res = self.configure(twin_model_file=output)
