@@ -120,7 +120,8 @@ def build_report(csv_paths, out_dir, protocol=None, plots=True):
         row = OrderedDict(
             experimento=exp, descripcion=descriptions.get(exp, ""), corridas=len(runs),
             lider=first["lider"], realimentacion=first["realimentacion"], compensacion=first["compensacion"],
-            modelo=first["modelo_gemelo"], red_ms=first["red_retardo_ms"], perdida=first["red_perdida"])
+            modelo=first["modelo_gemelo"], ganancias=first.get("ganancias", "—"),
+            red_ms=first["red_retardo_ms"], perdida=first["red_perdida"])
         for key in METRICS:
             row[key] = mean_std(metric(r, key) for r in runs)
         anomalies = {}
@@ -133,13 +134,14 @@ def build_report(csv_paths, out_dir, protocol=None, plots=True):
     lines = ["# Informe de experimentos del gemelo digital", "",
              f"{sum(len(r) for r in groups.values())} corridas en {len(groups)} experimentos. "
              "Valores: media ± desviación estándar entre repeticiones.", ""]
-    head = "| Experimento | Descripción | n | Líder | Realim. | Comp. | Modelo | Red [ms] | " + \
+    head = "| Experimento | Descripción | n | Líder | Realim. | Comp. | Modelo | Ganancias kx/ky/kθ | Red [ms] | " + \
         " | ".join(f"{name} [{unit}]" for name, _, unit in METRICS.values()) + " |"
-    lines += [head, "|" + "---|" * (8 + len(METRICS))]
+    lines += [head, "|" + "---|" * (9 + len(METRICS))]
     for exp, row in table.items():
         cells = [fmt_ms(*row[k][:2], METRICS[k][1], row[k][2]) for k in METRICS]
         lines.append(f"| {exp} | {row['descripcion']} | {row['corridas']} | {row['lider']} | {row['realimentacion']} "
-                     f"| {row['compensacion']} | {row['modelo']} | {row['red_ms']:.0f} | " + " | ".join(cells) + " |")
+                     f"| {row['compensacion']} | {row['modelo']} | {row['ganancias']} | {row['red_ms']:.0f} | "
+                     + " | ".join(cells) + " |")
 
     results_cmp = []
     if comparisons:

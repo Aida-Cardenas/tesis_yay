@@ -4,7 +4,7 @@
     ros2 run bumperbot_digital_twin twin_calibrate dynamics ~/twin_logs/twin_*_E1*.csv -o ~/modelo_robot.yaml
     ros2 run bumperbot_digital_twin twin_calibrate wheels --odom-distance 0.97 --real-distance 1.00 \\
          --odom-angle 6.10 --real-angle 6.283 -o ~/calibracion_ruedas.yaml
-    ros2 run bumperbot_digital_twin twin_calibrate arena --bounds -0.5 1.5 -0.5 1.5 -o arena.world
+    ros2 run bumperbot_digital_twin twin_calibrate arena --bounds -0.5 1.5 -0.5 1.5 -o arena.world --map-dir mapa_arena
 
 dynamics: identifica K, τ y L de la velocidad lineal y angular del robot real a partir
   de los registros del puente (comando del líder real frente a la velocidad medida).
@@ -24,7 +24,7 @@ import sys
 import numpy as np
 
 from bumperbot_digital_twin.dynamics import TwinModel, fit_error, fit_first_order, simulate, wheel_calibration
-from bumperbot_digital_twin.scan_compare import arena_world_sdf
+from bumperbot_digital_twin.scan_compare import arena_map, arena_world_sdf, write_map
 
 
 def read_identification_data(paths):
@@ -122,6 +122,10 @@ def cmd_arena(args):
     with open(args.output, "w") as f:
         f.write(arena_world_sdf(args.bounds, args.wall_height, args.wall_thickness, obstacles))
     print(f"Mundo guardado en {args.output}")
+    if args.map_dir:
+        image, origin = arena_map(args.bounds, args.wall_thickness, obstacles=obstacles)
+        write_map(args.map_dir, image, origin)
+        print(f"Mapa guardado en {args.map_dir}/map.yaml (para AMCL y Nav2 en ambos robots)")
     return 0
 
 
@@ -150,6 +154,7 @@ def main(argv=None):
     a.add_argument("--wall-thickness", type=float, default=0.05)
     a.add_argument("--obstacle", type=float, nargs=4, action="extend", metavar=("X", "Y", "ANCHO", "LARGO"))
     a.add_argument("-o", "--output", default="arena.world")
+    a.add_argument("--map-dir", help="Carpeta donde guardar también el mapa (map.yaml + map.pgm)")
     a.set_defaults(func=cmd_arena)
 
     args = parser.parse_args(argv)

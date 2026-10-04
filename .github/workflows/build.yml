@@ -76,7 +76,7 @@ jobs:
       - name: Gemelo en Gazebo headless (experimental)
         if: always()
         continue-on-error: true
-        timeout-minutes: 10
+        timeout-minutes: 18
         run: |
           apt-get install -y libegl1 libgl1-mesa-dri mesa-utils > /dev/null
           bash ci/test_gazebo_twin.sh

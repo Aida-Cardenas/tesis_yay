@@ -9,6 +9,7 @@ defaults:
   distance: 0.6
   pause: 0.5
   settle: 2.0
+  gains: default
 
 experiments:
   - {name: M, description: Solo copia comandos, feedback: false}
@@ -18,8 +19,11 @@ experiments:
   - {name: DC, description: 200 ms con compensación, net_delay_ms: 200, compensation: true}
   - {name: R, description: Real sigue al gemelo con 300 ms, leader: twin, net_delay_ms: 300}
   - {name: RC, description: Real sigue al gemelo con 300 ms y predictor de Smith, leader: twin, net_delay_ms: 300, compensation: true}
+  - {name: TUNE, tune: {follower: [real], delay_ms: [300], patterns: [square]}}
+  - {name: RT, description: Real sigue al gemelo con 300 ms y ganancias sintonizadas, leader: twin, net_delay_ms: 300, gains: tuned}
 
 comparisons:
   - [M, MC]
   - [D, DC]
   - [R, RC]
+  - [R, RT]

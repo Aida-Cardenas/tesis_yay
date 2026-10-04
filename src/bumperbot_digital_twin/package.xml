@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>bumperbot_digital_twin</name>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
   <description>Capa de comunicación bidireccional entre el robot físico y su gemelo digital en Gazebo</description>
   <maintainer email="aida.cardenas@correo.unimet.edu.ve">Aida Cárdenas</maintainer>
   <license>Apache-2.0</license>
@@ -17,6 +17,8 @@
   <exec_depend>builtin_interfaces</exec_depend>
   <exec_depend>rcl_interfaces</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
   <exec_depend>bumperbot_msgs</exec_depend>
   <exec_depend>bumperbot_bringup</exec_depend>
   <exec_depend>launch</exec_depend>

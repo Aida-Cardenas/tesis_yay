@@ -11,6 +11,7 @@
 """
 import glob
 import json
+import math
 import os
 import shutil
 import signal
@@ -158,15 +159,57 @@ def test_experiment_protocol(tmp_path):
     data = json.load(open(out_dir / "informe.json"))
     table = data["experimentos"]
     assert (out_dir / "modelo_gemelo.yaml").exists()
-    for exp in ("M", "MC", "D", "DC", "R", "RC"):
+    for exp in ("M", "MC", "D", "DC", "R", "RC", "RT"):
         assert table[exp]["rmse"][2] == 2, f"{exp}: faltan corridas"
+    assert (out_dir / "ganancias.yaml").exists()
 
     def m(exp, key="rmse"):
         return table[exp][key][0]
 
-    report("protocolo_ci: " + " ".join(f"{e}={m(e) * 100:.1f}cm" for e in ("M", "MC", "D", "DC", "R", "RC"))
-           + " · real R=" + f"{m('R', 'rmse_real') * 100:.1f}cm RC={m('RC', 'rmse_real') * 100:.1f}cm")
+    report("protocolo_ci: " + " ".join(f"{e}={m(e) * 100:.1f}cm" for e in ("M", "MC", "D", "DC", "R", "RC", "RT"))
+           + " · real R=" + f"{m('R', 'rmse_real') * 100:.1f}cm RC={m('RC', 'rmse_real') * 100:.1f}cm"
+           + f" RT={m('RT', 'rmse_real') * 100:.1f}cm · ganancias RT={table['RT']['ganancias']}")
+    report("comparaciones: " + "; ".join(f"{c['a']} vs {c['b']} p={c['p']:.3f}" for c in data["comparaciones"]))
     report("modelo identificado: " + (out_dir / "modelo_gemelo.yaml").read_text().replace("\n", " "))
     assert m("MC") < 0.6 * m("M"), "El gemelo calibrado no redujo el error"
     assert m("DC") < m("D"), "La compensación no redujo el error con 200 ms"
     assert m("RC", "rmse_real") < m("R", "rmse_real"), "El predictor de Smith no redujo el error"
+    assert m("RT", "rmse_real") < m("R", "rmse_real"), "Las ganancias sintonizadas no redujeron el error"
+
+
+def test_navigation_preview(tmp_path):
+    rd, td = 91, 92
+    out_dir = tmp_path / "navegacion"
+    proc, out = start(twin_launch(tmp_path / "logs", rd, td, "arena:=[-0.5,2.0,-1.0,1.0]"), tmp_path / "launch.log")
+    try:
+        time.sleep(6)
+        nav = subprocess.run(
+            ["ros2", "run", "bumperbot_digital_twin", "twin_navigate", "--goals", "metas_arena",
+             "--real-domain", str(rd), "--twin-domain", str(td), "--out", str(out_dir)],
+            capture_output=True, text=True, timeout=900)
+    finally:
+        stop(proc, out)
+    (tmp_path / "runner.log").write_text(nav.stdout + nav.stderr)
+    assert nav.returncode == 0, nav.stdout[-3000:] + nav.stderr[-3000:]
+    results = {r["meta"]: r for r in json.load(open(out_dir / "informe_navegacion.json"))}
+    for name, r in results.items():
+        c = r.get("comparacion", {})
+        report(f"navegacion {name}: aprobada={r['aprobada']} motivos={r['motivos']} "
+               f"t_gemelo={r['gemelo']['duracion_s']:.1f}s t_real={(r['real'] or {}).get('duracion_s', float('nan')):.1f}s "
+               f"desv_media={c.get('desviacion_media_m', float('nan')) * 100:.1f}cm "
+               f"desv_max={c.get('desviacion_max_m', float('nan')) * 100:.1f}cm "
+               f"err_final_real={(r['real'] or {}).get('error_final_m', float('nan')) * 100:.1f}cm")
+    for name in ("N1", "N2", "N3", "N4"):
+        r = results[name]
+        assert r["aprobada"] and r["ejecutada"], (name, r["motivos"])
+        assert r["real"]["lograda"], name
+        assert r["real"]["error_final_m"] < 0.1, name
+        assert r["comparacion"]["desviacion_media_m"] < 0.05, name
+    for name, text in (("X1", "obstáculo"), ("X2", "no llegó")):
+        r = results[name]
+        assert not r["aprobada"] and not r["ejecutada"], name
+        assert any(text in m for m in r["motivos"]), (name, r["motivos"])
+    x1, x2 = results["X1"]["inicio_real"], results["X2"]["inicio_real"]
+    assert math.hypot(x1[0] - x2[0], x1[1] - x2[1]) < 0.02, "El robot real se movió con una meta rechazada"
+    assert (out_dir / "vista_previa_N1.png").stat().st_size > 10000
+    assert "N1" in (out_dir / "informe_navegacion.md").read_text()

@@ -126,3 +126,39 @@ def arena_world_sdf(bounds, wall_height=0.3, wall_thickness=0.05, obstacles=(), 
   </world>
 </sdf>
 """
+
+
+def arena_map(bounds, wall_thickness=0.05, resolution=0.05, margin=0.5, obstacles=()):
+    """Mapa de ocupación (PGM + YAML de map_server) del mismo recinto que arena_world_sdf.
+
+    Devuelve (imagen uint8, origen [x, y, 0]). 0 = ocupado, 254 = libre, 205 = desconocido.
+    """
+    xmin, xmax, ymin, ymax = bounds
+    t = wall_thickness
+    ox, oy = xmin - t - margin, ymin - t - margin
+    w = int(math.ceil((xmax - xmin + 2 * (t + margin)) / resolution))
+    h = int(math.ceil((ymax - ymin + 2 * (t + margin)) / resolution))
+    cx = ox + (np.arange(w) + 0.5) * resolution
+    cy = oy + (np.arange(h) + 0.5) * resolution
+    X, Y = np.meshgrid(cx, cy)
+    img = np.full((h, w), 205, np.uint8)
+    inside = (X >= xmin) & (X <= xmax) & (Y >= ymin) & (Y <= ymax)
+    walls = (X >= xmin - t) & (X <= xmax + t) & (Y >= ymin - t) & (Y <= ymax + t) & ~inside
+    img[inside] = 254
+    img[walls] = 0
+    for (bx, by, sx, sy) in obstacles:
+        img[(np.abs(X - bx) <= sx / 2) & (np.abs(Y - by) <= sy / 2)] = 0
+    return img[::-1], [round(ox, 4), round(oy, 4), 0.0]
+
+
+def write_map(directory, image, origin, resolution=0.05):
+    import os
+    os.makedirs(directory, exist_ok=True)
+    h, w = image.shape
+    with open(os.path.join(directory, "map.pgm"), "wb") as f:
+        f.write(f"P5\n# mapa generado por twin_calibrate arena\n{w} {h}\n255\n".encode())
+        f.write(image.tobytes())
+    with open(os.path.join(directory, "map.yaml"), "w") as f:
+        f.write(f"image: map.pgm\nmode: trinary\nresolution: {resolution:.6f}\n"
+                f"origin: [{origin[0]:.6f}, {origin[1]:.6f}, 0.000000]\n"
+                "negate: 0\noccupied_thresh: 0.65\nfree_thresh: 0.196\n")

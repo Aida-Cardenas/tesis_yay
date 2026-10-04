@@ -27,6 +27,15 @@ import numpy as np
 NUMERIC_TEXT = ("leader", "anomalies")
 
 
+def gains_text(d):
+    if not all(k in d for k in ("kx", "ky", "ktheta")):
+        return "—"
+    vals = [float(np.nanmedian(d[k])) for k in ("kx", "ky", "ktheta")]
+    if not all(np.isfinite(vals)):
+        return "—"
+    return "/".join(f"{v:.1f}" for v in vals)
+
+
 def load(path):
     with open(path, newline="") as f:
         rows = list(csv.DictReader(f))
@@ -155,6 +164,7 @@ def analyze(path, out_dir, plots=True):
         "realimentacion": flag(d, "feedback"),
         "compensacion": flag(d, "compensation"),
         "modelo_gemelo": flag(d, "twin_model"),
+        "ganancias": gains_text(d),
         "red_retardo_ms": float(np.nanmedian(d["net_delay_ms"])) if "net_delay_ms" in d else 0.0,
         "red_perdida": float(np.nanmedian(d["net_loss"])) if "net_loss" in d else 0.0,
         "error_posicion_m": stats(d["pos_error"][valid]),

@@ -36,4 +36,23 @@ else
   annotate warning "Gemelo en Gazebo" "$INFO"
   annotate warning "Log Gazebo (errores)" "$(grep -iE 'error|fail|exception|died' /tmp/twin_gz.log | tail -n 40)"
 fi
+
+# Navegación con vista previa: Nav2 + AMCL del gemelo en Gazebo (mapa arena) y robot real de mentira
+mkdir -p /tmp/twin_gz_nav_logs
+setsid ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake twin_mode:=gazebo gui:=false rviz:=false \
+  world_name:=arena map_name:=arena arena:=[-0.5,2.0,-1.0,1.0] \
+  log_dir:=/tmp/twin_gz_nav_logs log_tag:=gznav > /tmp/twin_gz_nav.log 2>&1 &
+NPID=$!
+sleep 60
+timeout 300 ros2 run bumperbot_digital_twin twin_navigate 1.0 0.3 0 --name G1 --twin-sim-time \
+  --out /tmp/twin_gz_nav_res --no-plots > /tmp/twin_gz_nav_run.txt 2>&1
+NAV=$?
+stop_group $NPID
+if [ $NAV -eq 0 ] && grep -q '"aprobada": true' /tmp/twin_gz_nav_res/informe_navegacion.json 2>/dev/null; then
+  annotate notice "Vista previa de navegación con Gazebo + Nav2" "$(cat /tmp/twin_gz_nav_res/informe_navegacion.md)"
+else
+  annotate warning "Vista previa de navegación con Gazebo + Nav2" "$(tail -n 30 /tmp/twin_gz_nav_run.txt)"
+  annotate warning "Log Gazebo + Nav2 (errores)" "$(grep -iE 'error|fail|abort' /tmp/twin_gz_nav.log | tail -n 30)"
+  FAIL=1
+fi
 exit $FAIL

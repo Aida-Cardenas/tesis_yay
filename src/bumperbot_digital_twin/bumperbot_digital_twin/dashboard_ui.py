@@ -108,7 +108,12 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self.canvas = FigureCanvasQTAgg(self.figure)
         body.addWidget(self.canvas, 1)
 
-        body.addWidget(self._controls())
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidget(self._controls())
+        scroll.setWidgetResizable(True)
+        scroll.setFixedWidth(360)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        body.addWidget(scroll)
 
         self.events = QtWidgets.QTableWidget(0, 5)
         self.events.setHorizontalHeaderLabels(["Hora", "Origen", "Anomalía", "Fase", "Descripción"])
@@ -190,6 +195,57 @@ class DashboardWindow(QtWidgets.QMainWindow):
         gl.addRow(row)
         v.addWidget(g)
 
+        g = QtWidgets.QGroupBox("Ganancias de la corrección")
+        gl = QtWidgets.QFormLayout(g)
+        self.sp_gains = {}
+        for key, label, top in (("kx", "kx (avance)", 10.0), ("ky", "ky (lateral)", 40.0), ("ktheta", "kθ (giro)", 15.0)):
+            sp = QtWidgets.QDoubleSpinBox()
+            sp.setRange(0.05, top)
+            sp.setDecimals(2)
+            sp.setSingleStep(0.1)
+            self.sp_gains[key] = sp
+            gl.addRow(label, sp)
+        self.sp_gains["kx"].setValue(1.5)
+        self.sp_gains["ky"].setValue(6.0)
+        self.sp_gains["ktheta"].setValue(3.0)
+        self._gains_loaded = False
+        row = QtWidgets.QHBoxLayout()
+        b1 = QtWidgets.QPushButton("Aplicar")
+        b2 = QtWidgets.QPushButton("Por defecto")
+        b1.clicked.connect(lambda: self.actions.set_gains(*(self.sp_gains[k].value() for k in ("kx", "ky", "ktheta"))))
+        b2.clicked.connect(self._default_gains)
+        row.addWidget(b1)
+        row.addWidget(b2)
+        gl.addRow(row)
+        v.addWidget(g)
+
+        g = QtWidgets.QGroupBox("Navegar: probar en el gemelo primero")
+        gl = QtWidgets.QFormLayout(g)
+        self.sp_goal = {}
+        for key, label, lo, hi, suffix in (("x", "x", -20.0, 20.0, " m"), ("y", "y", -20.0, 20.0, " m"),
+                                           ("yaw", "Orientación", -180.0, 180.0, "°")):
+            sp = QtWidgets.QDoubleSpinBox()
+            sp.setRange(lo, hi)
+            sp.setDecimals(2 if key != "yaw" else 0)
+            sp.setSingleStep(0.1 if key != "yaw" else 15)
+            sp.setSuffix(suffix)
+            self.sp_goal[key] = sp
+            gl.addRow(label, sp)
+        self.sp_goal["x"].setValue(1.0)
+        self.chk_execute = QtWidgets.QCheckBox("Ejecutar en el robot real si se aprueba")
+        self.chk_execute.setChecked(True)
+        gl.addRow(self.chk_execute)
+        self.btn_nav = QtWidgets.QPushButton("Probar meta")
+        self.btn_nav.clicked.connect(lambda: self.actions.navigate(
+            self.sp_goal["x"].value(), self.sp_goal["y"].value(), self.sp_goal["yaw"].value(),
+            self.chk_execute.isChecked()))
+        gl.addRow(self.btn_nav)
+        self.lbl_nav = QtWidgets.QLabel("")
+        self.lbl_nav.setWordWrap(True)
+        self.lbl_nav.setStyleSheet(f"color: {MUTED}; font-size: 11px;")
+        gl.addRow(self.lbl_nav)
+        v.addWidget(g)
+
         g = QtWidgets.QGroupBox("Registro")
         gl = QtWidgets.QFormLayout(g)
         self.ed_tag = QtWidgets.QLineEdit("prueba")
@@ -200,6 +256,15 @@ class DashboardWindow(QtWidgets.QMainWindow):
         v.addWidget(g)
         v.addStretch(1)
         return panel
+
+    def _default_gains(self):
+        for k, val in (("kx", 1.5), ("ky", 6.0), ("ktheta", 3.0)):
+            self.sp_gains[k].setValue(val)
+        self.actions.set_gains(1.5, 6.0, 3.0)
+
+    @QtCore.pyqtSlot(str)
+    def show_nav(self, text):
+        self.lbl_nav.setText(text)
 
     def _flags_changed(self):
         if not self._updating_flags:
@@ -217,7 +282,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
         leader = s.get("leader", "")
         self.leader_badge.set_state(f"Líder: {'robot real' if leader == 'real' else 'gemelo'}", "#37474f")
         pos = s.get("position_error", math.nan)
-        if s.get("stale"):
+        if s.get("sync") is False:
+            self.sync_badge.set_state("Sincronización en pausa", MUTED)
+        elif s.get("stale"):
             self.sync_badge.set_state("Datos atrasados", BAD)
         elif s.get("lost_sync"):
             self.sync_badge.set_state("Desincronizado", BAD)
@@ -242,6 +309,10 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self.chk_comp.setChecked(bool(s.get("compensation")))
         self.chk_model.setChecked(bool(s.get("twin_model")))
         self._updating_flags = False
+        if not self._gains_loaded and all(isinstance(s.get(k), float) and s.get(k) > 0 for k in ("kx", "ky", "ktheta")):
+            for k in ("kx", "ky", "ktheta"):
+                self.sp_gains[k].setValue(s[k])
+            self._gains_loaded = True
         if math.isfinite(pos):
             self.err_hist.append((now, pos * 100))
         if math.isfinite(rtt):

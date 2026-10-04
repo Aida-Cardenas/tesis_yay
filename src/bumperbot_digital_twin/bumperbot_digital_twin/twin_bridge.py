@@ -72,6 +72,7 @@ from bumperbot_digital_twin.geometry import (
 from bumperbot_digital_twin.netem import NetworkEmulator
 from bumperbot_digital_twin.ros_util import SpinThread, shutdown_all
 from bumperbot_digital_twin.scan_compare import bin_scan, compare_scans
+from bumperbot_digital_twin.tuning import load_gains_file
 
 SIDES = ("real", "twin")
 NAN = float("nan")
@@ -86,7 +87,7 @@ CSV_COLUMNS = [
     "twin_x", "twin_y", "twin_yaw", "twin_v", "twin_w",
     "ff_v", "ff_w", "cmd_v", "cmd_w",
     "rtt_ms", "one_way_ms", "real_odom_age_ms", "leader_cmd_age_ms",
-    "anomalies",
+    "anomalies", "sync", "kx", "ky", "ktheta",
 ]
 SCAN_COLUMNS = ["t", "common", "mae", "rmse", "bias", "p95",
                 "coverage_real", "coverage_twin", "visibility_agreement", "pos_error"]
@@ -105,6 +106,8 @@ DEFAULTS = {
     "kx": 1.5,
     "ky": 6.0,
     "ktheta": 3.0,
+    "gains_file": "",
+    "sync": True,
     "max_linear": 0.5,
     "max_angular": 2.5,
     "real_max_linear": 0.3,
@@ -288,6 +291,7 @@ class TwinBridge:
         self.twin_model = None
         self.twin_filters = None
         self._load_twin_model(self.p["twin_model_file"])
+        self._load_gains(self.p["gains_file"])
 
         self.sides = {}
         self.sides["real"] = Side("real", real_node, self)
@@ -354,6 +358,18 @@ class TwinBridge:
             self.main.get_logger().error(f"No se pudo cargar twin_model_file {path}: {exc}")
             self.twin_model = None
             self.twin_filters = None
+
+    def _load_gains(self, path):
+        path = os.path.expanduser(path or "")
+        if not path:
+            return
+        try:
+            gains = load_gains_file(path)
+            self.p.update(gains)
+            self.main.get_logger().info(
+                f"Ganancias de {path}: kx={gains['kx']:.2f} ky={gains['ky']:.2f} ktheta={gains['ktheta']:.2f}")
+        except Exception as exc:
+            self.main.get_logger().error(f"No se pudo leer gains_file {path}: {exc}")
 
     def gains_for(self, follower):
         g = TrackingGains(self.p["kx"], self.p["ky"], self.p["ktheta"],
@@ -599,6 +615,20 @@ class TwinBridge:
                     notes.append(f"modelo={os.path.basename(request.twin_model_file)}")
                 else:
                     notes.append("ERROR: no se pudo cargar el modelo")
+            gains = {k: getattr(request, k) for k in ("kx", "ky", "ktheta") if getattr(request, k) > 0}
+            if gains:
+                self.p.update(gains)
+                notes.append("ganancias=" + " ".join(f"{k}={v:.2f}" for k, v in gains.items()))
+            if request.pause_sync and self.p["sync"]:
+                self.p["sync"] = False
+                notes.append("sincronización en pausa")
+            if request.resume_sync and not self.p["sync"]:
+                self.p["sync"] = True
+                self.last_active = -1e9
+                if self.twin_filters:
+                    for f in self.twin_filters:
+                        f.reset()
+                notes.append("sincronización reanudada")
             if self.p["twin_model"] and self.twin_model is None:
                 notes.append("ADVERTENCIA: no hay twin_model_file cargado")
             net = [request.net_delay_ms, request.net_jitter_ms, request.net_loss]
@@ -709,8 +739,10 @@ class TwinBridge:
             leader_moving = abs(ff[0]) > 1e-3 or abs(ff[1]) > 1e-3
             needs_correction = use_fb and (abs(err[0]) > self.p["position_tolerance"]
                                            or abs(err[2]) > self.p["heading_tolerance"])
-            active = leader_moving or needs_correction
-            if active:
+            active = (leader_moving or needs_correction) and self.p["sync"]
+            if not self.p["sync"]:
+                cmd = None
+            elif active:
                 self.last_active = now
             elif now - self.last_active < 1.0:
                 cmd = (0.0, 0.0)
@@ -730,7 +762,7 @@ class TwinBridge:
                 if self.twin_filters:
                     for f in self.twin_filters:
                         f.reset()
-        elif stale and now - self.last_active < 1.0:
+        elif stale and self.p["sync"] and now - self.last_active < 1.0:
             self.send_to(follower, self.sides[follower].follow_pub, Twist())
 
         self._check_comm_anomalies(now, stale)
@@ -763,6 +795,8 @@ class TwinBridge:
         status.net_loss = float(self.p["net_loss"])
         status.one_way_delay_ms = tau * 1000.0
         status.anomalies = "|".join(sorted(self.active_anomalies))
+        status.sync = bool(self.p["sync"])
+        status.kx, status.ky, status.ktheta = float(self.p["kx"]), float(self.p["ky"]), float(self.p["ktheta"])
         for side in self.sides.values():
             side.status_pub.publish(status)
 
@@ -792,7 +826,7 @@ class TwinBridge:
             *pose_cols(twin.pose), twin.v, twin.w,
             ff[0], ff[1], cmd[0], cmd[1],
             self.rtt_ms, tau * 1000.0, self.real_odom_age_ms, cmd_age,
-            status.anomalies,
+            status.anomalies, int(self.p["sync"]), self.p["kx"], self.p["ky"], self.p["ktheta"],
         ]
         self.csv_writer.writerow([f"{x:.5f}" if isinstance(x, float) else x for x in row])
         if self.tick_count % 20 == 0:

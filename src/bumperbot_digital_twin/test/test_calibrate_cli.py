@@ -47,3 +47,27 @@ def test_arena_cli(tmp_path):
     assert calibrate.main(["arena", "--bounds", "-0.5", "2", "-1", "1", "--obstacle", "1", "0", "0.2", "0.2",
                            "-o", str(out)]) == 0
     assert "obstaculo_0" in out.read_text()
+
+
+def test_arena_cli_writes_world_and_map(tmp_path):
+    world = tmp_path / "arena.world"
+    maps = tmp_path / "mapa"
+    assert calibrate.main(["arena", "--bounds", "-0.5", "2.0", "-1.0", "1.0", "-o", str(world),
+                           "--map-dir", str(maps)]) == 0
+    assert world.exists()
+    meta = yaml.safe_load(open(maps / "map.yaml"))
+    assert meta["image"] == "map.pgm" and meta["resolution"] == pytest.approx(0.05)
+    raw = open(maps / "map.pgm", "rb").read()
+    assert raw.startswith(b"P5")
+    header = raw.split(b"\n")
+    w, h = (int(v) for v in header[2].split())
+    pixels = np.frombuffer(raw[-w * h:], np.uint8).reshape(h, w)[::-1]
+    ox, oy = meta["origin"][:2]
+
+    def cell(x, y):
+        return pixels[int((y - oy) / 0.05), int((x - ox) / 0.05)]
+
+    assert cell(0.0, 0.0) == 254
+    assert cell(2.02, 0.0) == 0
+    assert cell(-0.52, 0.0) == 0
+    assert cell(0.5, 1.02) == 0

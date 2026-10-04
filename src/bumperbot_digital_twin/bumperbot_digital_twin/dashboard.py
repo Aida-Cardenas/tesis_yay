@@ -47,6 +47,8 @@ class RosActions:
         self.configure_client = node.create_client(TwinConfigure, "/digital_twin/configure")
         self.switch_client = node.create_client(Trigger, "/digital_twin/switch_leader")
         self.player = TrajectoryPlayer(self.dual)
+        self.preview = None
+        self.nav_busy = False
 
     def _status_cb(self, msg):
         s = {
@@ -56,6 +58,7 @@ class RosActions:
             "cmd_v": msg.command.linear.x, "cmd_w": msg.command.angular.z,
             "net_delay_ms": msg.net_delay_ms, "net_loss": msg.net_loss, "anomalies": msg.anomalies,
             "feedback": msg.feedback, "compensation": msg.compensation, "twin_model": msg.twin_model,
+            "sync": msg.sync, "kx": msg.kx, "ky": msg.ky, "ktheta": msg.ktheta,
         }
         with self.lock:
             self.status = s
@@ -95,24 +98,62 @@ class RosActions:
         req.net_delay_ms = req.net_jitter_ms = req.net_loss = -1.0
         for k, v in kw.items():
             setattr(req, k, v)
-        return self.dual.call("twin", self.configure_client, req).message
+        res = self.dual.call("twin", self.configure_client, req, timeout=15.0)
+        if not res.success:
+            raise RuntimeError(res.message)
+        return res
+
+    def set_gains(self, kx, ky, ktheta):
+        self._async(lambda: self._configure(kx=float(kx), ky=float(ky), ktheta=float(ktheta)).message)
+
+    def _nav_text(self, text):
+        win = self.window_ref()
+        if win is not None:
+            QtCore.QMetaObject.invokeMethod(win, "show_nav", QtCore.Qt.QueuedConnection, QtCore.Q_ARG(str, text))
+
+    def navigate(self, x, y, yaw_deg, execute):
+        if self.nav_busy:
+            self.window_ref().show_message("Ya hay una navegación en curso")
+            return
+        from bumperbot_digital_twin.nav_preview import NavPreview
+
+        def run():
+            self.nav_busy = True
+            try:
+                if self.preview is None:
+                    self.preview = NavPreview(self.dual, self._configure, log=self._nav_text)
+                    time.sleep(1.0)
+                r = self.preview.run("panel", x, y, math.radians(yaw_deg), "auto" if execute else "never",
+                                     out_dir=os.path.expanduser("~/twin_resultados/navegacion_panel"))
+                text = "Aprobada" if r["aprobada"] else "Rechazada: " + "; ".join(r["motivos"])
+                if "comparacion" in r:
+                    c = r["comparacion"]
+                    text += (f". Ruta real vs prevista: desviación media {c['desviacion_media_m'] * 100:.1f} cm, "
+                             f"máxima {c['desviacion_max_m'] * 100:.1f} cm")
+                self._nav_text(text)
+            except Exception as exc:
+                self._nav_text(f"Error: {exc}")
+            finally:
+                self.nav_busy = False
+
+        threading.Thread(target=run, daemon=True).start()
 
     def switch_leader(self):
         self._async(lambda: self.dual.call("twin", self.switch_client, self.Trigger.Request()).message)
 
     def align(self):
-        self._async(lambda: self._configure(align=True))
+        self._async(lambda: self._configure(align=True).message)
 
     def set_flags(self, feedback, compensation, twin_model):
         self._async(lambda: self._configure(feedback=int(feedback), compensation=int(compensation),
-                                            twin_model=int(twin_model)))
+                                            twin_model=int(twin_model)).message)
 
     def set_network(self, delay, jitter, loss):
         self._async(lambda: self._configure(net_delay_ms=float(delay), net_jitter_ms=float(jitter),
-                                            net_loss=float(loss)))
+                                            net_loss=float(loss)).message)
 
     def new_log(self, tag):
-        self._async(lambda: self._configure(new_log=True, log_tag=tag))
+        self._async(lambda: self._configure(new_log=True, log_tag=tag).message)
 
     def start_trajectory(self, pattern, speed, distance):
         leader = (self.window_ref().last_status or {}).get("leader", "real")
@@ -150,6 +191,7 @@ def selftest(path):
             "heading_error": 0.02, "rtt_ms": 18 + rng.gauss(0, 3), "one_way_delay_ms": 9.0,
             "cmd_v": 0.15, "cmd_w": 0.3, "net_delay_ms": 0.0, "net_loss": 0.0, "anomalies": "",
             "feedback": True, "compensation": True, "twin_model": False,
+            "sync": True, "kx": 1.5, "ky": 6.0, "ktheta": 3.0,
         })
         win.err_hist[-1] = (i * 0.25, win.err_hist[-1][1])
         win.rtt_hist[-1] = (i * 0.25, win.rtt_hist[-1][1])
@@ -163,8 +205,11 @@ def selftest(path):
     app.processEvents()
     win.btn_align.click()
     win.chk_comp.setChecked(False)
+    win.btn_nav.click()
+    win.show_nav("Aprobada. Ruta real vs prevista: desviación media 1.2 cm, máxima 3.4 cm")
     app.processEvents()
-    ok = any(c[0] == "align" for c in actions.calls) and any(c[0] == "set_flags" for c in actions.calls)
+    names = [c[0] for c in actions.calls]
+    ok = all(n in names for n in ("align", "set_flags", "navigate"))
     win.grab().save(path)
     print(f"Captura en {path}; acciones registradas: {[c[0] for c in actions.calls]}")
     return 0 if ok and os.path.exists(path) else 1

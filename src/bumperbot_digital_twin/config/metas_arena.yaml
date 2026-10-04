@@ -1,0 +1,13 @@
+# Metas de prueba para la navegación con vista previa en el recinto "arena"
+# (world_name:=arena map_name:=arena, paredes en x de -0,5 a 2,0 m e y de -1,0 a 1,0 m).
+#   ros2 run bumperbot_digital_twin twin_navigate --goals metas_arena
+# x, y en metros en el marco del mapa (el origen es la marca de salida); yaw en grados.
+goals:
+  - {name: N1, x: 1.2, y: 0.0, yaw: 0}
+  - {name: N2, x: 1.0, y: 0.6, yaw: 90}
+  - {name: N3, x: 0.3, y: -0.6, yaw: 180}
+  - {name: N4, x: 0.0, y: 0.0, yaw: 0}
+  # Pegada a la pared: el gemelo debe rechazarla (pasa a menos de 20 cm)
+  - {name: X1, x: 1.87, y: 0.0, yaw: 0}
+  # Fuera del recinto: no hay camino
+  - {name: X2, x: 3.0, y: 0.0, yaw: 0}

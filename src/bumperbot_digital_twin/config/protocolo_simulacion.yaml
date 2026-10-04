@@ -10,6 +10,7 @@ defaults:
   angular_speed: 0.6
   distance: 1.0
   settle: 3.0
+  gains: default
 
 experiments:
   - {name: S1, description: Cuadrado con corrección, pattern: square}
@@ -22,9 +23,13 @@ experiments:
   - {name: L150C, description: 150 ms con compensación, pattern: square, net_delay_ms: 150, compensation: true}
   - {name: L300, description: 300 ms sin compensación, pattern: square, net_delay_ms: 300}
   - {name: L300C, description: 300 ms con compensación, pattern: square, net_delay_ms: 300, compensation: true}
+  - {name: R300, description: El real sigue al gemelo con 300 ms, pattern: square, leader: twin, net_delay_ms: 300}
+  - {name: TUNE, tune: {follower: [real], delay_ms: [300], patterns: [square]}}
+  - {name: R300T, description: El real sigue al gemelo con 300 ms y ganancias sintonizadas, pattern: square, leader: twin, net_delay_ms: 300, gains: tuned}
 
 comparisons:
   - [S1, S2]
   - [S2, S4]
   - [L150, L150C]
   - [L300, L300C]
+  - [R300, R300T]

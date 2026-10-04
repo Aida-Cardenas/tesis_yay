@@ -45,3 +45,9 @@ float64 one_way_delay_ms
 float64 position_error_raw
 # Anomalías activas, separadas por "|"
 string anomalies
+# false mientras la sincronización está en pausa (por ejemplo, durante una vista previa de navegación)
+bool sync
+# Ganancias de la ley de seguimiento en uso
+float64 kx
+float64 ky
+float64 ktheta

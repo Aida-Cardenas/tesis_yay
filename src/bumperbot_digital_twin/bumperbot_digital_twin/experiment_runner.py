@@ -26,6 +26,7 @@ from bumperbot_msgs.srv import TwinConfigure
 from bumperbot_digital_twin.calibrate import fit_channel, read_identification_data
 from bumperbot_digital_twin.dynamics import TwinModel
 from bumperbot_digital_twin.report import build_report
+from bumperbot_digital_twin.tuning import DEFAULT_GAINS
 from bumperbot_digital_twin.ros_util import DualDomain, TrajectoryPlayer
 
 DEFAULTS = {
@@ -47,6 +48,7 @@ DEFAULTS = {
     "settle": 3.0,
     "duration": 60.0,
     "instructions": "",
+    "gains": None,
 }
 
 
@@ -68,6 +70,8 @@ def load_protocol(path):
     for item in protocol.get("experiments", []):
         if "calibrate_from" in item:
             steps.append({"type": "calibrate", **item})
+        elif "tune" in item:
+            steps.append({"type": "tune", "defaults": defaults, **item})
         else:
             steps.append({"type": "experiment", **defaults, **item})
     return protocol, steps
@@ -82,6 +86,8 @@ class Runner:
         self.client = self.dual.nodes["twin"].create_client(TwinConfigure, "/digital_twin/configure")
         self.player = TrajectoryPlayer(self.dual)
         self.logs = {}
+        self.model_path = None
+        self.tuned_gains = None
         self.session_dir = os.path.expanduser(args.out or os.path.join(
             "~/twin_resultados", f"{protocol.get('name', 'protocolo')}_{datetime.now():%Y%m%d_%H%M%S}"))
 
@@ -97,6 +103,10 @@ class Runner:
         req.new_log = bool(kwargs.get("new_log", False))
         req.log_tag = kwargs.get("log_tag", "")
         req.twin_model_file = kwargs.get("twin_model_file", "")
+        gains = kwargs.get("gains") or {}
+        req.kx, req.ky, req.ktheta = (float(gains.get(k, 0.0)) for k in ("kx", "ky", "ktheta"))
+        req.pause_sync = bool(kwargs.get("pause_sync", False))
+        req.resume_sync = bool(kwargs.get("resume_sync", False))
         res = self.dual.call("twin", self.client, req, timeout=15.0)
         if not res.success:
             raise RuntimeError(res.message)
@@ -124,7 +134,7 @@ class Runner:
             leader=step["leader"], feedback=step["feedback"], compensation=step["compensation"],
             twin_model=step["twin_model"], net_delay_ms=step["net_delay_ms"],
             net_jitter_ms=step["net_jitter_ms"], net_loss=step["net_loss"],
-            align=True, new_log=True, log_tag=tag)
+            gains=self.gains_for(step), align=True, new_log=True, log_tag=tag)
         self.logs.setdefault(step["name"], []).append(res.log_path)
         print(f"   {res.message}")
         time.sleep(1.5)
@@ -136,6 +146,46 @@ class Runner:
                                      step["distance"], step["radius"], step["laps"], step["pause"])
             print(f"   Recorrido {step['pattern']} terminado ({total:.1f} s)")
         time.sleep(step["settle"])
+        return True
+
+    def gains_for(self, step):
+        choice = step.get("gains")
+        if choice is None:
+            return None
+        if choice == "default":
+            return DEFAULT_GAINS
+        if choice == "tuned":
+            if self.tuned_gains is None:
+                print("   ADVERTENCIA: no hay ganancias sintonizadas todavía; uso las de por defecto")
+                return DEFAULT_GAINS
+            return self.tuned_gains
+        if isinstance(choice, dict):
+            return choice
+        raise ValueError(f"gains debe ser default, tuned o un diccionario con kx, ky, ktheta: {choice}")
+
+    def tune(self, step):
+        from bumperbot_digital_twin.dynamics import NOMINAL_MODEL
+        from bumperbot_digital_twin.tune import run_tuning
+        cfg = step["tune"] or {}
+        d = step["defaults"]
+        real_model = TwinModel.load(self.model_path) if self.model_path else NOMINAL_MODEL
+        if not self.model_path:
+            print("   ADVERTENCIA: no hay modelo calibrado; sintonizo con el modelo ideal")
+
+        def as_list(v, default):
+            v = cfg.get(v, default)
+            return v if isinstance(v, list) else [v]
+
+        output = os.path.join(self.session_dir, step.get("output", "ganancias.yaml"))
+        result, _ = run_tuning(
+            real_model, NOMINAL_MODEL, as_list("follower", ["twin", "real"]),
+            [float(x) for x in as_list("delay_ms", [0.0])], as_list("patterns", [d["pattern"]]),
+            bool(cfg.get("compensation", False)), d["linear_speed"], d["angular_speed"], d["distance"],
+            d["radius"], d["pause"], output=output, plots=not self.args.no_plots, quiet=True)
+        self.tuned_gains = result.gains
+        g = result.gains
+        print(f"   kx={g['kx']:.2f} ky={g['ky']:.2f} kθ={g['ktheta']:.2f} "
+              f"(costo simulado {result.default_cost:.4f} → {result.cost:.4f}); guardadas en {output}")
         return True
 
     def calibrate(self, step):
@@ -155,6 +205,7 @@ class Runner:
             except ValueError as exc:
                 print(f"   {channel}: {exc}")
         model.save(output)
+        self.model_path = output
         res = self.configure(twin_model_file=output)
         print(f"   Modelo calibrado guardado en {output} ({res.message})")
         return True
@@ -165,6 +216,11 @@ class Runner:
         print(f"Protocolo: {self.protocol.get('name', '')} · resultados en {self.session_dir}")
         self.configure()
         for step in self.steps:
+            if step["type"] == "tune":
+                if only is None or step.get("name") in only:
+                    print(f"\n── Sintonización de ganancias con el gemelo ({step.get('name', 'TUNE')})")
+                    self.tune(step)
+                continue
             if step["type"] == "calibrate":
                 if only is None or step.get("name") in only or any(s in only for s in step["calibrate_from"]):
                     print(f"\n── Calibración del gemelo con {', '.join(step['calibrate_from'])}")
@@ -180,7 +236,7 @@ class Runner:
 
     def finish(self):
         self.configure(new_log=True, log_tag="fin", feedback=True, compensation=False, twin_model=False,
-                       net_delay_ms=0.0, net_jitter_ms=0.0, net_loss=0.0)
+                       net_delay_ms=0.0, net_jitter_ms=0.0, net_loss=0.0, resume_sync=True)
         paths = [p for runs in self.logs.values() for p in runs if os.path.exists(p)]
         if not paths:
             print("No hay corridas para analizar")

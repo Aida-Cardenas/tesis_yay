@@ -76,12 +76,17 @@ def generate_launch_description():
                               description="Recinto de los robots de mentira para el LiDAR: [xmin, xmax, ymin, ymax]"),
         DeclareLaunchArgument("fake_real_scan_noise", default_value="0.02"),
         DeclareLaunchArgument("detector_model_file", default_value=""),
+        DeclareLaunchArgument("gains_file", default_value="",
+                              description="Ganancias kx, ky, ktheta del puente (twin_tune)"),
+        DeclareLaunchArgument("fake_nav", default_value="true",
+                              description="Con robots de mentira, lanzar también un navegador de mentira (acción de Nav2)"),
     ]
 
     real_domain, twin_domain = lc("real_domain"), lc("twin_domain")
     twin_is_gazebo = PythonExpression(["'", lc("twin_mode"), "' == 'gazebo'"])
     twin_is_fake = PythonExpression(["'", lc("twin_mode"), "' == 'fake'"])
     real_is_fake = PythonExpression(["'", lc("real_mode"), "' == 'fake'"])
+    twin_sim_time_flag = PythonExpression(["'--twin-sim-time' if '", lc("twin_mode"), "' == 'gazebo' else ''"])
     twin_sim_time = PythonExpression(["'true' if '", lc("twin_mode"), "' == 'gazebo' else 'false'"])
     leader_domain = PythonExpression(["'", real_domain, "' if '", lc("leader"), "' == 'real' else '", twin_domain, "'"])
     driver_sim_time = PythonExpression(["'", lc("leader"), "' == 'twin' and '", lc("twin_mode"), "' == 'gazebo'"])
@@ -143,6 +148,25 @@ def generate_launch_description():
         condition=IfCondition(real_is_fake),
     )
 
+    fake_nav = lc("fake_nav")
+    twin_fake_nav = Node(
+        package="bumperbot_digital_twin",
+        executable="fake_navigator",
+        parameters=[{"arena": lc("arena")}],
+        additional_env={"ROS_DOMAIN_ID": twin_domain},
+        output="screen",
+        condition=IfCondition(PythonExpression(["'", lc("twin_mode"), "' == 'fake' and '", fake_nav, "' == 'true'"])),
+    )
+
+    real_fake_nav = Node(
+        package="bumperbot_digital_twin",
+        executable="fake_navigator",
+        parameters=[{"arena": lc("arena")}],
+        additional_env={"ROS_DOMAIN_ID": real_domain},
+        output="screen",
+        condition=IfCondition(PythonExpression(["'", lc("real_mode"), "' == 'fake' and '", fake_nav, "' == 'true'"])),
+    )
+
     bridge = Node(
         package="bumperbot_digital_twin",
         executable="twin_bridge",
@@ -159,7 +183,8 @@ def generate_launch_description():
              "net_jitter_ms": as_float("net_jitter_ms"),
              "net_loss": as_float("net_loss"),
              "log_dir": ParameterValue(lc("log_dir"), value_type=str),
-             "log_tag": ParameterValue(lc("log_tag"), value_type=str)},
+             "log_tag": ParameterValue(lc("log_tag"), value_type=str),
+             "gains_file": ParameterValue(lc("gains_file"), value_type=str)},
         ],
         output="screen",
     )
@@ -191,7 +216,7 @@ def generate_launch_description():
 
     dashboard = ExecuteProcess(
         cmd=["ros2", "run", "bumperbot_digital_twin", "twin_dashboard",
-             "--real-domain", real_domain, "--twin-domain", twin_domain],
+             "--real-domain", real_domain, "--twin-domain", twin_domain, twin_sim_time_flag],
         output="screen",
         condition=IfCondition(lc("dashboard")),
     )
@@ -200,4 +225,4 @@ def generate_launch_description():
                         " twin_domain=", twin_domain, " real_mode=", lc("real_mode"), " twin_mode=", lc("twin_mode")])
 
     return LaunchDescription(args + [info, twin_gazebo, twin_fake, real_fake, real_fake_echo, real_fake_detector,
-                                     bridge, driver, rviz, dashboard])
+                                     twin_fake_nav, real_fake_nav, bridge, driver, rviz, dashboard])

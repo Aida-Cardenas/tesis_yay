@@ -9,6 +9,7 @@ defaults:
   angular_speed: 0.6
   distance: 1.0
   settle: 3.0
+  gains: default
 
 experiments:
   - name: E1
@@ -85,6 +86,25 @@ experiments:
     net_jitter_ms: 20
     compensation: true
 
+  - name: TUNE
+    tune:
+      follower: [twin, real]
+      delay_ms: [0, 250]
+      patterns: [square, circle]
+    output: ganancias.yaml
+  - name: G0T
+    description: Cuadrado de 1 m con corrección y ganancias sintonizadas
+    pattern: square
+    gains: tuned
+  - name: L250RT
+    description: Red con 250 ms, el robot real sigue al gemelo, ganancias sintonizadas
+    pattern: square
+    repetitions: 2
+    leader: twin
+    net_delay_ms: 250
+    net_jitter_ms: 20
+    gains: tuned
+
   - name: A1
     description: Atasco provocado
     pattern: line
@@ -105,3 +125,5 @@ comparisons:
   - [L100, L100C]
   - [L250, L250C]
   - [L250R, L250RC]
+  - [E3, G0T]
+  - [L250R, L250RT]

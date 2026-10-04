@@ -6,7 +6,7 @@ package_name = 'bumperbot_digital_twin'
 
 setup(
     name=package_name,
-    version='0.2.0',
+    version='0.3.0',
     packages=[package_name],
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
@@ -34,6 +34,9 @@ setup(
             'twin_report = bumperbot_digital_twin.report:main',
             'twin_experiment = bumperbot_digital_twin.experiment_runner:main',
             'twin_dashboard = bumperbot_digital_twin.dashboard:main',
+            'twin_tune = bumperbot_digital_twin.tune:main',
+            'twin_navigate = bumperbot_digital_twin.nav_preview:main',
+            'fake_navigator = bumperbot_digital_twin.fake_navigator:main',
         ],
     },
 )

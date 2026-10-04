@@ -18,6 +18,13 @@ bool new_log
 string log_tag
 # Cargar otro modelo dinámico para el gemelo (twin_calibrate dynamics). "" sin cambio.
 string twin_model_file
+# Pausar o reanudar la sincronización (en pausa el puente no manda comandos a ningún robot)
+bool pause_sync
+bool resume_sync
+# Ganancias de la ley de seguimiento. Cero o negativo = sin cambio.
+float64 kx
+float64 ky
+float64 ktheta
 ---
 bool success
 string message
