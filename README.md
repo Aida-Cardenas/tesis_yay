@@ -14,7 +14,8 @@ Trabajo Especial de Grado — Ingeniería de Sistemas, Universidad Metropolitana
 tesis-gemelo-digital-wmr/          <- esta carpeta ES el workspace (colcon build aquí)
 ├── src/
 │   ├── bumperbot_digital_twin  GEMELO DIGITAL (propio): puente bidireccional, calibración, anomalías,
-│   │                           red degradada, compensación de latencia, LiDAR, panel, experimentos
+│   │                           red degradada, compensación de latencia, LiDAR, panel, experimentos,
+│   │                           navegación con vista previa, sintonización de ganancias
 │   ├── bumperbot_description   URDF/xacro, mallas, mundos de Gazebo, launch de simulación
 │   ├── bumperbot_controller    diff_drive_controller, cinemática propia (simple_controller), teleoperación, twist_mux
 │   ├── bumperbot_firmware      ros2_control hardware interface (serial), driver IMU MPU6050, sketches Arduino
@@ -67,7 +68,7 @@ ros2 launch bumperbot_bringup simulated_robot.launch.py world_name:=small_house 
 
 En RViz: primero **2D Pose Estimate** (pose inicial para AMCL) y luego **Nav2 Goal** para enviar una meta.
 
-Mundos disponibles: `empty`, `small_house`, `small_warehouse`, `arena` (recinto rectangular para comparar el LiDAR; se regenera con `twin_calibrate arena`). Mapas disponibles: `small_house`, `small_warehouse`.
+Mundos disponibles: `empty`, `small_house`, `small_warehouse`, `arena` (recinto rectangular de pruebas; su mapa también se llama `arena` y ambos se regeneran con `twin_calibrate arena`). Mapas: `small_house`, `small_warehouse`, `arena`.
 
 **Solo ver el modelo** (RViz, sin física):
 
@@ -148,7 +149,10 @@ Sin robot, todo en el PC: `ros2 launch bumperbot_digital_twin digital_twin.launc
 | `anomaly_detector` | Detecta atascos, deslizamiento, empujones y desvíos del modelo en el robot real |
 | `twin_dashboard` | Panel de control: métricas en vivo, gráficas, cambio de líder, red, recorridos |
 | `twin_experiment` | Corre un protocolo YAML completo y genera el informe estadístico |
-| `twin_calibrate` | Identifica el modelo dinámico (`dynamics`), calibra las ruedas (`wheels`), genera el recinto (`arena`) |
+| `twin_calibrate` | Identifica el modelo dinámico (`dynamics`), calibra las ruedas (`wheels`), genera el recinto y su mapa (`arena`) |
+| `twin_tune` | Sintoniza las ganancias de la corrección simulando con el modelo del gemelo |
+| `twin_navigate` | Navegación con vista previa: el gemelo prueba la meta con Nav2 antes que el robot real |
+| `twin_odom_meter` | Mide distancia y giro según la odometría (para calibrar las ruedas) |
 | `analyze_twin_log` / `twin_report` | Métricas y gráficas de una corrida / informe de varias con pruebas t |
 
 Detalles, métricas y experimentos en [`docs/GEMELO_DIGITAL.md`](docs/GEMELO_DIGITAL.md).
@@ -159,4 +163,4 @@ Nav2 usa por defecto `SmacPlanner2D` y `RegulatedPurePursuitController`. Los plu
 
 ## Integración continua
 
-`.github/workflows/build.yml` compila el workspace completo en ROS 2 Humble en cada push, verifica que el URDF y todos los launch carguen y prueba el gemelo digital sin hardware: pruebas unitarias, sincronización y LiDAR con robots de mentira, detección de fallas inyectadas, el protocolo de experimentos completo (calibración, red degradada, compensación), el panel, el robot real con hardware simulado y Gazebo sin ventana. Los resultados aparecen como anotaciones en la pestaña *Actions* de GitHub.
+`.github/workflows/build.yml` compila el workspace completo en ROS 2 Humble en cada push, verifica que el URDF y todos los launch carguen y prueba el gemelo digital sin hardware: pruebas unitarias, sincronización y LiDAR con robots de mentira, detección de fallas inyectadas, el protocolo de experimentos completo (calibración, red degradada, compensación, sintonización), la navegación con vista previa, el panel, el robot real con hardware simulado y Gazebo sin ventana. Los resultados aparecen como anotaciones en la pestaña *Actions* de GitHub.

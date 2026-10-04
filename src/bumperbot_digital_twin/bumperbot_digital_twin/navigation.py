@@ -93,7 +93,7 @@ def approve(run, criteria=ApprovalCriteria()):
         reasons.append(f"tardó {run.duration:.0f} s (máximo {criteria.max_time:.0f} s)")
     if run.recoveries > criteria.max_recoveries:
         reasons.append(f"necesitó {run.recoveries} maniobras de recuperación (máximo {criteria.max_recoveries})")
-    if math.isfinite(run.final_error) and run.final_error > criteria.max_final_error:
+    if run.succeeded and math.isfinite(run.final_error) and run.final_error > criteria.max_final_error:
         reasons.append(f"quedó a {run.final_error * 100:.0f} cm de la meta")
     return not reasons, reasons
 

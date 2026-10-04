@@ -123,11 +123,47 @@ ros2 run bumperbot_digital_twin twin_experiment protocolo_real
 
 Lee un protocolo YAML (`config/protocolo_real.yaml`, `protocolo_simulacion.yaml`), y para cada experimento y repetición configura el puente, realinea, abre un registro `<experimento>_r<n>`, hace el recorrido y espera. Entre corridas pide colocar el robot en la marca (con `--auto` no pregunta). A mitad del protocolo puede calibrar el gemelo con las corridas anteriores (`calibrate_from`). Al final genera `informe.md` / `informe.json`: media ± desviación por experimento, comparaciones con prueba t de Welch (¿la mejora es significativa?) y la gráfica de error contra latencia.
 
-`protocolo_real` cubre toda la Prueba 5: E1–E6 (corrección, espejo, ambos sentidos), calibración, E7 (gemelo calibrado), L100/L250 con y sin compensación (y con el robot real como seguidor), A1/A2 (atasco y empujón provocados a mano).
+`protocolo_real` cubre toda la Prueba 5: E1–E6 (corrección, espejo, ambos sentidos), calibración, E7 (gemelo calibrado), L100/L250 con y sin compensación (y con el robot real como seguidor), TUNE (sintonización con el modelo de CAL) con G0T y L250RT para validarla, A1/A2 (atasco y empujón provocados a mano).
 
 Informe de varias carpetas de registros: `ros2 run bumperbot_digital_twin twin_report ~/twin_logs/*.csv -o informe`.
 
-## 9. Métricas
+## 9. Navegación con vista previa
+
+`twin_navigate` usa al gemelo como **simulador predictivo**: antes de mandar al robot real a una meta, el gemelo la intenta con Nav2.
+
+1. Pausa la sincronización (`pause_sync` en `/digital_twin/configure`) para que el puente no mueva a ninguno de los dos.
+2. Manda la meta a la acción `navigate_to_pose` del gemelo y registra su ruta (TF `map → base_footprint`), el tiempo, la distancia mínima del LiDAR a obstáculos y las maniobras de recuperación.
+3. **Aprueba** la meta si el gemelo llegó, sin bajar de `--min-clearance` (20 cm por defecto), en menos de `--max-time` y con pocas recuperaciones; si no, la **rechaza** con el motivo.
+4. Devuelve al gemelo al punto de partida con Nav2.
+5. Si se aprobó (y con `--execute auto`, o confirmando con `--execute ask`), realinea, reanuda la sincronización con el robot real como líder y le manda la misma meta; el gemelo lo sigue en vivo.
+6. Compara la ruta real con la prevista: desviación media, p95 y máxima (distancia de cada punto real a la polilínea prevista), Hausdorff, longitudes, diferencia de tiempo y error final.
+
+```bash
+ros2 run bumperbot_digital_twin twin_navigate 1.2 0.5 90 --twin-sim-time
+ros2 run bumperbot_digital_twin twin_navigate --goals metas_arena --twin-sim-time --execute ask
+```
+
+Para que las dos rutas sean comparables, ambos robots se localizan con AMCL en **el mismo mapa** (`map_name:=arena`) y el gemelo corre en el mismo recinto (`world_name:=arena`), los dos arrancando en la marca de salida (0, 0). `twin_calibrate arena --map-dir` genera el mapa junto con el mundo.
+
+Sin Nav2 (`real_mode:=fake twin_mode:=fake`) se usa `fake_navigator`, que ofrece la misma acción `navigate_to_pose` y rechaza metas fuera del recinto.
+
+Resultados: `informe_navegacion.md/json` y, por meta, `vista_previa_<meta>.png/.csv/.json`.
+
+## 10. Sintonización automática de las ganancias
+
+La ley de seguimiento tiene tres ganancias (kx, ky, kθ). Las de por defecto (1,5 / 6 / 3) son buenas sin retardo, pero con latencia y con un robot de respuesta lenta el lazo puede oscilar. `twin_tune` usa al gemelo como modelo para elegirlas:
+
+1. Simula el lazo completo (líder → red → puente → seguidor) con el modelo identificado del robot real (`twin_calibrate dynamics`) y el del gemelo, en cada escenario: recorrido × quién sigue × retardo de red, con o sin compensación.
+2. El costo es el RMSE de posición más una pequeña penalización al error de orientación y a los cambios bruscos de comando.
+3. Busca en escala logarítmica: una rejilla de 4 × 4 × 4 combinaciones y luego Nelder-Mead desde las dos mejores. Nunca devuelve algo peor que las ganancias de partida.
+
+```bash
+ros2 run bumperbot_digital_twin twin_tune --real-model modelo_gemelo.yaml --follower twin,real --delay-ms 0,250
+```
+
+Genera `ganancias.yaml` (para `gains_file:=` del launch o `--apply` con el puente corriendo), `ganancias_informe.md` y `ganancias.png` (trayectorias y error antes/después). En los protocolos, el paso `TUNE` lo hace solo con el modelo de `CAL`, y los experimentos con `gains: tuned` usan el resultado.
+
+## 11. Métricas
 
 | Métrica | Cómo se mide | Requisito |
 |---|---|---|
@@ -141,7 +177,7 @@ Informe de varias carpetas de registros: `ros2 run bumperbot_digital_twin twin_r
 
 Todo queda en `~/twin_logs/twin_<fecha>_<tag>.csv` (+ `_scan.csv`, `_eventos.csv` y `.json` con los parámetros usados) y se publica en vivo en `/digital_twin/status` (`bumperbot_msgs/TwinSyncStatus`) en ambos dominios.
 
-## 10. Uso rápido
+## 12. Uso rápido
 
 Robot físico (Raspberry Pi):
 
@@ -177,11 +213,12 @@ ros2 service call /digital_twin/switch_leader std_srvs/srv/Trigger
 ros2 service call /digital_twin/set_feedback std_srvs/srv/SetBool "{data: false}"
 ros2 service call /digital_twin/new_log std_srvs/srv/Trigger
 ros2 service call /digital_twin/configure bumperbot_msgs/srv/TwinConfigure "{leader: '', feedback: -1, compensation: 1, twin_model: -1, net_delay_ms: 150.0, net_jitter_ms: 10.0, net_loss: 0.0}"
+ros2 service call /digital_twin/configure bumperbot_msgs/srv/TwinConfigure "{feedback: -1, compensation: -1, twin_model: -1, net_delay_ms: -1.0, net_jitter_ms: -1.0, net_loss: -1.0, kx: 0.8, ky: 3.0, ktheta: 1.5}"
 ```
 
 Análisis de una corrida: `ros2 run bumperbot_digital_twin analyze_twin_log ~/twin_logs/*.csv -o resultados`.
 
-## 11. Parámetros principales (`config/twin_bridge.yaml`)
+## 13. Parámetros principales (`config/twin_bridge.yaml`)
 
 | Parámetro | Defecto | Qué hace |
 |---|---|---|
@@ -198,21 +235,24 @@ Análisis de una corrida: `ros2 run bumperbot_digital_twin analyze_twin_log ~/tw
 | `net_delay_ms`, `net_jitter_ms`, `net_loss` | 0 | Red emulada hacia el robot real |
 | `scan_compare`, `relay_real_scan` | `true` | Comparar y reenviar el LiDAR real |
 | `latency_alert_ms` | 250 | Umbral de la anomalía `latencia_alta` |
+| `gains_file` | — | YAML con kx, ky, ktheta (`twin_tune`) |
+| `sync` | `true` | `false` = sincronización en pausa (la usa `twin_navigate`) |
 | `odom_topic` | `/bumperbot_controller/odom` | Odometría que se compara (`/odometry/filtered` para usar el EKF) |
 
-## 12. Pruebas automáticas
+## 14. Pruebas automáticas
 
 `.github/workflows/build.yml` compila todo en ROS 2 Humble y ejecuta:
 
 1. Pruebas unitarias: geometría y ley de control, predictor de Smith, identificación del modelo, emulador de red, detector de anomalías, comparación de LiDAR, análisis, informe, calibración y panel.
 2. Sincronización con dos robots de mentira en dos dominios (líder real con y sin corrección, líder gemelo), con comparación de LiDAR en un recinto.
 3. Fallas inyectadas en el robot "real" (atasco, deslizamiento, empujón): el detector debe reportar cada una y ninguna otra.
-4. El protocolo `protocolo_ci` completo con `twin_experiment --auto`: robot "real" más lento y con retardo, calibración automática, red de 200 y 300 ms con y sin compensación.
-5. El panel dibujado sin pantalla.
-6. El robot real completo con hardware simulado (ros2_control mock) + EKF + Nav2 + detector, y el gemelo siguiéndolo.
-7. El gemelo en Gazebo sin ventana, en el recinto, siguiendo a un robot real de mentira (experimental).
+4. El protocolo `protocolo_ci` completo con `twin_experiment --auto`: robot "real" más lento y con retardo, calibración automática, red de 200 y 300 ms con y sin compensación, y sintonización automática de ganancias.
+5. Navegación con vista previa con los navegadores de mentira: cuatro metas aprobadas y ejecutadas, una rechazada por pasar cerca de la pared y otra fuera del recinto.
+6. El panel dibujado sin pantalla.
+7. El robot real completo con hardware simulado (ros2_control mock) + EKF + Nav2 + detector + medidor de odometría, y el gemelo siguiéndolo.
+8. El gemelo en Gazebo sin ventana, en el recinto, siguiendo a un robot real de mentira, y una meta de navegación con vista previa usando Nav2 y AMCL del gemelo (experimental).
 
-Resultados de la corrida automática del 3 de octubre de 2026 (60 de 60 pruebas aprobadas; todo simulado, en un solo computador):
+Resultados de la corrida automática del 4 de octubre de 2026 (todas las pruebas aprobadas; todo simulado, en un solo computador):
 
 **Sincronización y LiDAR** (robot "real" de mentira y gemelo con 10 % menos de velocidad, cuadrado de 0,6 m a 0,3 m/s, ambos en un recinto de 2 × 2 m):
 
@@ -228,14 +268,26 @@ Resultados de la corrida automática del 3 de octubre de 2026 (60 de 60 pruebas 
 
 | Experimento | RMSE de posición | Reducción |
 |---|---|---|
-| M: solo copia comandos | 24,3 cm | |
-| MC: solo copia comandos, gemelo calibrado | 2,8 cm | −88 % |
+| M: solo copia comandos | 24,2 cm | |
+| MC: solo copia comandos, gemelo calibrado | 2,7 cm | −89 % |
 | D: red de 200 ms, sin compensación | 3,3 cm | |
 | DC: red de 200 ms, con compensación | 1,9 cm | −42 % |
-| R: el real sigue al gemelo, red de 300 ms | 26,9 cm | |
-| RC: lo mismo con predictor de Smith | 11,5 cm | −57 % |
+| R: el real sigue al gemelo, red de 300 ms (error real en el mismo instante) | 24,2 cm | |
+| RC: lo mismo con predictor de Smith | 13,2 cm | −45 % |
+| RT: lo mismo con ganancias sintonizadas por el gemelo (kx 0,3 / ky 0,5 / kθ 0,3) | 12,4 cm | −49 % |
 
-Las tres mejoras fueron significativas en la prueba t de Welch (p < 0,05). El modelo identificado a partir de M fue K = 0,86, τ = 0,34 s y L = 0,05 s (R² = 0,999), cercano a los valores con que se configuró el robot de mentira (el ajuste reparte parte del retardo en τ).
+Las cuatro mejoras fueron significativas en la prueba t de Welch (p < 0,05). La sintonización sola logra lo mismo que el predictor de Smith: con 300 ms de retardo, lo mejor es corregir con suavidad. El modelo identificado a partir de M fue K = 0,86, τ = 0,34 s y L = 0,05 s (R² = 0,999), cercano a los valores con que se configuró el robot de mentira (el ajuste reparte parte del retardo en τ).
+
+**Navegación con vista previa** (navegadores de mentira, recinto `arena`):
+
+| Meta | Veredicto del gemelo | Tiempo gemelo / real | Desviación media / máxima entre rutas | Error final del real |
+|---|---|---|---|---|
+| N1 (1,2; 0) | Aprobada | 7,4 s / 6,7 s | 0,0 / 0,2 cm | 4,8 cm |
+| N2 (1,0; 0,6) | Aprobada | 7,8 s / 6,1 s | 1,8 / 4,3 cm | 4,5 cm |
+| N3 (0,3; −0,6) | Aprobada | 13,3 s / 11,2 s | 2,9 / 5,4 cm | 4,6 cm |
+| N4 (0; 0) | Aprobada | 7,8 s / 7,2 s | 2,1 / 8,6 cm | 4,4 cm |
+| X1 pegada a la pared | Rechazada: pasó a 18 cm (mínimo 20) | 11,8 s / — | — | el real no se movió |
+| X2 fuera del recinto | Rechazada: no hay camino | 0,1 s / — | — | el real no se movió |
 
 **Gemelo en Gazebo** (física, EKF y Nav2) siguiendo al robot de mentira en el recinto `arena`: error medio 0,5 cm, máximo 2,7 cm; LiDAR de Gazebo frente al de mentira: MAE 2,2 cm, coincidencia de visibilidad 99,7 %.
 
@@ -243,11 +295,13 @@ Las tres mejoras fueron significativas en la prueba t de Welch (p < 0,05). El mo
 
 La latencia de red en estas pruebas es local (menos de 2 ms); con la Raspberry Pi por Wi-Fi será mayor, y es lo que mide `protocolo_real`.
 
-## 13. Limitaciones conocidas
+## 15. Limitaciones conocidas
 
 - La alineación inicial supone que ambos robots arrancan en el mismo punto. Si no, hay que llamar a `/digital_twin/align` con los robots en posiciones equivalentes.
 - Se comparan odometrías, que también derivan. Para comparar posiciones absolutas, ambos deben localizarse en el mismo mapa (AMCL) y usar `/amcl_pose`; queda como mejora.
 - Con el robot parado no se puede corregir el error lateral (restricción no holonómica del robot diferencial); se corrige en cuanto vuelve a avanzar.
 - El modelo de primer orden no representa la zona muerta de los motores a velocidades muy bajas; conviene identificar con las velocidades que se usarán en las pruebas.
 - La compensación supone que el retardo es aproximadamente simétrico (un sentido = RTT/2).
-- Todo lo anterior está probado con robots simulados; los valores con el robot físico salen de correr `protocolo_real`.
+- La vista previa supone que el gemelo y el robot real están localizados en el mismo mapa y en el mismo recinto; si el entorno real cambia (alguien pone una caja), el gemelo no lo sabe.
+- La sintonización es tan buena como el modelo identificado; conviene validarla siempre con un experimento (`G0T`, `L250RT`).
+- Todo lo anterior está probado con robots simulados; los valores con el robot físico salen de correr `protocolo_real` y `twin_navigate`.

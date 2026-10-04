@@ -39,6 +39,8 @@ def test_approval_rules():
     ]:
         ok, reasons = approve(run, ApprovalCriteria())
         assert not ok and any(text in r for r in reasons), reasons
+    ok, reasons = approve(TwinRun(False, "abortada", 0.1, final_error=3.0))
+    assert len(reasons) == 1
 
 
 def test_min_valid_range_ignores_invalid_and_body():
