@@ -289,6 +289,8 @@ Las cuatro mejoras fueron significativas en la prueba t de Welch (p < 0,05). La 
 | X1 pegada a la pared | Rechazada: pasó a 18 cm (mínimo 20) | 11,8 s / — | — | el real no se movió |
 | X2 fuera del recinto | Rechazada: no hay camino | 0,1 s / — | — | el real no se movió |
 
+**Vista previa con Nav2 de verdad**: el gemelo en Gazebo (AMCL en el mapa `arena` y Nav2) aprobó una meta a (1,0; 0,3) m en 8,6 s; el robot real de mentira la ejecutó en 6,8 s con una desviación media de 4,5 cm respecto a la ruta prevista (máxima 8,4 cm).
+
 **Gemelo en Gazebo** (física, EKF y Nav2) siguiendo al robot de mentira en el recinto `arena`: error medio 0,5 cm, máximo 2,7 cm; LiDAR de Gazebo frente al de mentira: MAE 2,2 cm, coincidencia de visibilidad 99,7 %.
 
 **Robot real con hardware simulado** (ros2_control mock + EKF + Nav2 + detector, 10 comprobaciones aprobadas) y gemelo siguiéndolo en un ida y vuelta de 0,8 m: error medio 1,0 cm, máximo 1,5 cm.
