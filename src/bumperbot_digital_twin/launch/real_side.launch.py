@@ -23,6 +23,8 @@ def generate_launch_description():
         DeclareLaunchArgument("real_domain", default_value="10",
                               description="ROS_DOMAIN_ID del robot físico (igual que en el PC)"),
         DeclareLaunchArgument("use_slam", default_value="false"),
+        DeclareLaunchArgument("map_name", default_value="arena",
+                              description="Mapa para AMCL y Nav2 (el mismo que usa el gemelo)"),
         DeclareLaunchArgument("use_ekf", default_value="true"),
         DeclareLaunchArgument("use_safety_stop", default_value="false"),
         DeclareLaunchArgument("use_mock_hardware", default_value="false",
@@ -42,6 +44,7 @@ def generate_launch_description():
         os.path.join(get_package_share_directory("bumperbot_bringup"), "launch", "real_robot.launch.py"),
         launch_arguments={
             "use_slam": lc("use_slam"),
+            "map_name": lc("map_name"),
             "use_ekf": lc("use_ekf"),
             "use_safety_stop": lc("use_safety_stop"),
             "use_mock_hardware": lc("use_mock_hardware"),

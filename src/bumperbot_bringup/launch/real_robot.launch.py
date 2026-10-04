@@ -45,6 +45,12 @@ def generate_launch_description():
         description="EKF (robot_localization) fuses wheel odometry and IMU and publishes odom -> base_footprint"
     )
 
+    map_name_arg = DeclareLaunchArgument(
+        "map_name",
+        default_value="small_house",
+        description="Map for AMCL, in bumperbot_mapping/maps/<map_name>/map.yaml"
+    )
+
     use_safety_stop_arg = DeclareLaunchArgument(
         "use_safety_stop",
         default_value="false",
@@ -130,7 +136,7 @@ def generate_launch_description():
             "launch",
             "global_localization.launch.py"
         ),
-        launch_arguments={"use_sim_time": "False"}.items(),
+        launch_arguments={"use_sim_time": "False", "map_name": LaunchConfiguration("map_name")}.items(),
         condition=UnlessCondition(use_slam)
     )
 
@@ -161,6 +167,7 @@ def generate_launch_description():
         arduino_port_arg,
         use_ekf_arg,
         use_safety_stop_arg,
+        map_name_arg,
         hardware_interface,
         laser_driver,
         controller,
