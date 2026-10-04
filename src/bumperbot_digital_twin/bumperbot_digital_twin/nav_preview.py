@@ -103,8 +103,21 @@ class NavSide:
             self.initial_pose_pub.publish(msg)
             time.sleep(0.2)
 
-    def navigate(self, x, y, yaw, timeout, log=print):
-        """Manda la meta y espera. Devuelve TwinRun con la ruta recorrida."""
+    def navigate(self, x, y, yaw, timeout, log=print, retries=2):
+        """Manda la meta y espera. Si Nav2 dice "lograda" sin haberse movido (pasa cuando
+        todavía no terminó de arrancar), la reintenta."""
+        for attempt in range(retries + 1):
+            run = self._navigate_once(x, y, yaw, timeout, log)
+            premature = run.succeeded and run.duration < 1.0 and run.final_error > 0.3
+            if not premature:
+                return run
+            log(f"   [{self.name}] Nav2 respondió sin moverse; reintento ({attempt + 1}/{retries})")
+            time.sleep(3.0)
+        run.succeeded = False
+        run.status = "Nav2 responde sin moverse"
+        return run
+
+    def _navigate_once(self, x, y, yaw, timeout, log=print):
         goal = self.NavigateToPose.Goal()
         goal.pose.header.frame_id = self.frame
         goal.pose.pose.position.x, goal.pose.pose.position.y = float(x), float(y)

@@ -43,7 +43,7 @@ setsid ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake
   world_name:=arena map_name:=arena arena:=[-0.5,2.0,-1.0,1.0] \
   log_dir:=/tmp/twin_gz_nav_logs log_tag:=gznav > /tmp/twin_gz_nav.log 2>&1 &
 NPID=$!
-sleep 60
+sleep 90
 timeout 300 ros2 run bumperbot_digital_twin twin_navigate 1.0 0.3 0 --name G1 --twin-sim-time \
   --out /tmp/twin_gz_nav_res --no-plots > /tmp/twin_gz_nav_run.txt 2>&1
 NAV=$?
