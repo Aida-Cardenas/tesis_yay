@@ -22,7 +22,7 @@ from sensor_msgs.msg import Imu
 from std_msgs.msg import Bool
 
 from bumperbot_msgs.msg import TwinAnomaly
-from bumperbot_digital_twin.anomaly import AnomalyDetector, DetectorConfig
+from bumperbot_digital_twin.anomaly import AnomalyDetector, DetectorConfig, StallLock
 from bumperbot_digital_twin.dynamics import NOMINAL_MODEL, TwinModel
 
 
@@ -35,6 +35,8 @@ class AnomalyDetectorNode(Node):
         self.state_timeout = self.declare_parameter("state_timeout", 0.5).value
         self.use_imu = self.declare_parameter("use_imu", True).value
         self.lock_on_stall = self.declare_parameter("lock_on_stall", False).value
+        self.stall_lock = StallLock(self.declare_parameter("lock_hold_time", 3.0).value,
+                                    self.declare_parameter("lock_retry_time", 1.5).value)
         log_dir = self.declare_parameter("log_dir", "").value
         cfg = DetectorConfig()
         for field in cfg.__dataclass_fields__:
@@ -91,6 +93,14 @@ class AnomalyDetectorNode(Node):
         imu = None
         if self.use_imu and self.imu_rx is not None and now - self.imu_rx < self.state_timeout:
             imu = self.imu_w
+        if self.lock_on_stall:
+            action = self.stall_lock.update(now, "atasco" in self.detector.active)
+            if action:
+                self.lock_pub.publish(Bool(data=action == "lock"))
+                self.get_logger().warn("Bloqueo de seguridad puesto (atasco)" if action == "lock"
+                                       else "Bloqueo liberado: el robot puede volver a intentarlo")
+            if self.stall_lock.locked:
+                return
         for ev in self.detector.update(now, cmd[0], cmd[1], self.meas[0], self.meas[1], imu):
             msg = TwinAnomaly()
             t = time.time()
@@ -107,8 +117,6 @@ class AnomalyDetectorNode(Node):
             if self.writer:
                 self.writer.writerow([f"{t:.4f}", ev.kind, ev.phase, ev.severity, f"{ev.value:.4f}", ev.description])
                 self.log_file.flush()
-            if self.lock_on_stall and ev.kind == "atasco":
-                self.lock_pub.publish(Bool(data=ev.phase == "inicio"))
 
 
 def main():

@@ -87,7 +87,9 @@ class Runner:
         self.player = TrajectoryPlayer(self.dual)
         self.logs = {}
         self.model_path = None
+        self.calibration_failed = False
         self.tuned_gains = None
+        self.tuning_failed = False
         self.session_dir = os.path.expanduser(args.out or os.path.join(
             "~/twin_resultados", f"{protocol.get('name', 'protocolo')}_{datetime.now():%Y%m%d_%H%M%S}"))
 
@@ -117,6 +119,13 @@ class Runner:
             return "c"
         answer = input(f"\n{text}\n[Enter] continuar · [s] saltar · [q] terminar: ").strip().lower()
         return {"": "c"}.get(answer, answer[:1])
+
+    def skip_reason(self, step):
+        if step.get("twin_model") and self.calibration_failed:
+            return "necesita el gemelo calibrado y la calibración falló"
+        if step.get("gains") == "tuned" and (self.tuning_failed or self.tuned_gains is None):
+            return "necesita las ganancias sintonizadas y no hay"
+        return None
 
     def run_experiment(self, step, rep):
         tag = f"{step['name']}_r{rep}"
@@ -155,9 +164,6 @@ class Runner:
         if choice == "default":
             return DEFAULT_GAINS
         if choice == "tuned":
-            if self.tuned_gains is None:
-                print("   ADVERTENCIA: no hay ganancias sintonizadas todavía; uso las de por defecto")
-                return DEFAULT_GAINS
             return self.tuned_gains
         if isinstance(choice, dict):
             return choice
@@ -168,9 +174,12 @@ class Runner:
         from bumperbot_digital_twin.tune import run_tuning
         cfg = step["tune"] or {}
         d = step["defaults"]
-        real_model = TwinModel.load(self.model_path) if self.model_path else NOMINAL_MODEL
         if not self.model_path:
-            print("   ADVERTENCIA: no hay modelo calibrado; sintonizo con el modelo ideal")
+            self.tuning_failed = True
+            print("   ERROR: no hay un modelo calibrado en esta sesión (paso CAL); sin él la "
+                  "sintonización no tiene sentido. Se salta, junto con los experimentos con gains: tuned.")
+            return False
+        real_model = TwinModel.load(self.model_path)
 
         def as_list(v, default):
             v = cfg.get(v, default)
@@ -206,7 +215,15 @@ class Runner:
                 print(f"   {channel}: K={m.gain:.3f} τ={m.tau:.3f}s L={m.delay:.3f}s R²={m.r2:.3f}")
             except ValueError as exc:
                 print(f"   {channel}: {exc}")
-        if fits and not self.args.no_plots:
+        missing = [c for c in ("linear", "angular") if c not in fits]
+        if missing:
+            self.calibration_failed = True
+            self.model_path = None
+            print(f"   ERROR: no se pudo calibrar ({', '.join(missing)}): faltan corridas de "
+                  f"{', '.join(step['calibrate_from'])} en esta sesión. No se carga ningún modelo; "
+                  "se saltan los experimentos con gemelo calibrado y la sintonización.")
+            return False
+        if not self.args.no_plots:
             plot_fit(model, fits, os.path.splitext(output)[0] + "_ajuste.png")
         model.save(output)
         self.model_path = output
@@ -231,6 +248,10 @@ class Runner:
                     self.calibrate(step)
                 continue
             if only is not None and step["name"] not in only:
+                continue
+            reason = self.skip_reason(step)
+            if reason:
+                print(f"\n── {step['name']}: se salta ({reason})")
                 continue
             reps = self.args.repetitions or step["repetitions"]
             for rep in range(1, reps + 1):

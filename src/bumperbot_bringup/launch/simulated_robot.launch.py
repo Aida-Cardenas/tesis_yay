@@ -45,12 +45,25 @@ def generate_launch_description():
         description="Start the LiDAR safety_stop node (Map & Localization course)"
     )
 
+    world_name_arg = DeclareLaunchArgument(
+        "world_name",
+        default_value="arena",
+        description="Gazebo world, in bumperbot_description/worlds/<world_name>.world"
+    )
+
+    map_name_arg = DeclareLaunchArgument(
+        "map_name",
+        default_value="arena",
+        description="Map for AMCL, in bumperbot_mapping/maps/<map_name>/map.yaml (must match world_name)"
+    )
+
     gazebo = IncludeLaunchDescription(
         os.path.join(
             get_package_share_directory("bumperbot_description"),
             "launch",
             "gazebo.launch.py"
         ),
+        launch_arguments={"world_name": LaunchConfiguration("world_name")}.items(),
     )
     
     controller = IncludeLaunchDescription(
@@ -103,6 +116,7 @@ def generate_launch_description():
             "launch",
             "global_localization.launch.py"
         ),
+        launch_arguments={"map_name": LaunchConfiguration("map_name")}.items(),
         condition=UnlessCondition(use_slam)
     )
 
@@ -144,6 +158,8 @@ def generate_launch_description():
         use_rviz_arg,
         use_ekf_arg,
         use_safety_stop_arg,
+        world_name_arg,
+        map_name_arg,
         gazebo,
         controller,
         joystick,

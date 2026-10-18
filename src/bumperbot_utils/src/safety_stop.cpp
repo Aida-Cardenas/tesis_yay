@@ -80,6 +80,7 @@ private:
   double warning_distance_, danger_distance_;
   bool is_first_msg_;
   State state_, prev_state_;
+  bool speed_reduced_ = false;
   visualization_msgs::msg::MarkerArray zones_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr laser_sub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr safety_stop_pub_;
@@ -111,7 +112,11 @@ private:
       if(state_ == State::WARNING)
       {
         is_safety_stop.data = false;
-        decrease_speed_client_->async_send_goal(twist_mux_msgs::action::JoyTurbo::Goal());
+        if(!speed_reduced_)
+        {
+          decrease_speed_client_->async_send_goal(twist_mux_msgs::action::JoyTurbo::Goal());
+          speed_reduced_ = true;
+        }
         zones_.markers.at(0).color.a = 1.0;
         zones_.markers.at(1).color.a = 0.5;
       }
@@ -124,7 +129,11 @@ private:
       else if(state_ == State::FREE)
       {
         is_safety_stop.data = false;
-        increase_speed_client_->async_send_goal(twist_mux_msgs::action::JoyTurbo::Goal());
+        if(speed_reduced_)
+        {
+          increase_speed_client_->async_send_goal(twist_mux_msgs::action::JoyTurbo::Goal());
+          speed_reduced_ = false;
+        }
         zones_.markers.at(0).color.a = 0.5;
         zones_.markers.at(1).color.a = 0.5;
       }

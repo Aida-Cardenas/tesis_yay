@@ -66,7 +66,7 @@ Algunos de estos archivos se quitaron en la limpieza (ver arriba); la tabla se d
 |---|---|---|
 | 4 Planificación de rutas | `dijkstra_planner`, `a_star_planner` (C++/Py) | `bumperbot_planning` |
 | 5 Planificación de movimiento | `pd_motion_planner`, `pure_pursuit` (C++/Py) | `bumperbot_motion` |
-| 6 Evasión de obstáculos | `costmap.yaml` | `bumperbot_navigation` |
+| 6 Evasión de obstáculos | costmaps (el bloque `local_costmap` de `controller_server.yaml` y `global_costmap` de `planner_server.yaml`; el `costmap.yaml` de la demo se quitó) | `bumperbot_navigation` |
 | 7 Navegación | `navigation.launch.py`, `planner_server.yaml`, `controller_server.yaml`, `smoother_server.yaml`, plugins Nav2 | `bumperbot_navigation` |
 | 8 Toma de decisiones | behavior trees (`simple_navigation*.xml`), `bt_navigator.yaml`, `behavior_server.yaml` | `bumperbot_navigation` |
 | 9 Construir el robot | Nav2 en ambos bringup | `bumperbot_bringup` |

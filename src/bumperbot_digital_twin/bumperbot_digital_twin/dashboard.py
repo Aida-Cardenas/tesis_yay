@@ -117,8 +117,9 @@ class RosActions:
             return
         from bumperbot_digital_twin.nav_preview import NavPreview
 
+        self.nav_busy = True
+
         def run():
-            self.nav_busy = True
             try:
                 if self.preview is None:
                     self.preview = NavPreview(self.dual, self._configure, log=self._nav_text)

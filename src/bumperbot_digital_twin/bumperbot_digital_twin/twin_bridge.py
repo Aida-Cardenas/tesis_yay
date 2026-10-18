@@ -133,6 +133,7 @@ DEFAULTS = {
     "real_scan_frame": "laser_link",
     "scan_compare_rate": 2.0,
     "scan_sync_tolerance": 0.05,
+    "scan_heading_tolerance": 0.035,
     "scan_max_linear": 0.05,
     "scan_max_angular": 0.3,
     "latency_alert_ms": 250.0,
@@ -144,7 +145,7 @@ DEFAULTS = {
 RUNTIME_FLOATS = ("kx", "ky", "ktheta", "max_linear", "max_angular", "real_max_linear",
                   "real_max_angular", "position_tolerance", "heading_tolerance",
                   "max_correction_error", "compensation_extra_ms", "latency_alert_ms",
-                  "scan_sync_tolerance")
+                  "scan_sync_tolerance", "scan_heading_tolerance")
 
 
 def other(side):
@@ -328,6 +329,9 @@ class TwinBridge:
         p = {k: node.declare_parameter(k, v).value for k, v in defaults.items()}
         if p["leader"] not in SIDES:
             raise ValueError("leader debe ser 'real' o 'twin'")
+        for key in ("rate", "ping_rate", "scan_compare_rate"):
+            if not p[key] > 0:
+                raise ValueError(f"{key} debe ser mayor que 0 (vale {p[key]})")
         return p
 
     def _declare_mirror_parameters(self, node):
@@ -416,7 +420,12 @@ class TwinBridge:
         log_dir = os.path.expanduser(self.p["log_dir"])
         os.makedirs(log_dir, exist_ok=True)
         tag = f"_{self.p['log_tag']}" if self.p["log_tag"] else ""
-        base = os.path.join(log_dir, f"twin_{datetime.now().strftime('%Y%m%d_%H%M%S')}{tag}")
+        stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        base = os.path.join(log_dir, f"twin_{stamp}{tag}")
+        n = 2
+        while os.path.exists(base + ".csv"):
+            base = os.path.join(log_dir, f"twin_{stamp}{tag}{'-' if tag else '_'}{n}")
+            n += 1
         self.csv_path = base + ".csv"
         self.csv_file = open(self.csv_path, "w", newline="")
         self.csv_writer = csv.writer(self.csv_file)
@@ -520,13 +529,15 @@ class TwinBridge:
         out.header.stamp = twin.node.get_clock().now().to_msg()
         twin.real_scan_pub.publish(out)
 
-    def _compare_scans(self, now, pos_err):
+    def _compare_scans(self, now, pos_err, heading_err):
         if not self.p["scan_compare"] or now - self.last_scan_cmp < 1.0 / self.p["scan_compare_rate"]:
             return
         r, t = self.sides["real"].state, self.sides["twin"].state
         if r.scan is None or t.scan is None or now - r.scan_rx > 0.5 or now - t.scan_rx > 0.5:
             return
         if not math.isfinite(pos_err) or pos_err > self.p["scan_sync_tolerance"]:
+            return
+        if not math.isfinite(heading_err) or abs(heading_err) > self.p["scan_heading_tolerance"]:
             return
         if any(abs(s.v) > self.p["scan_max_linear"] or abs(s.w) > self.p["scan_max_angular"] for s in (r, t)):
             return
@@ -800,7 +811,7 @@ class TwinBridge:
         for side in self.sides.values():
             side.status_pub.publish(status)
 
-        self._compare_scans(now, pos_error)
+        self._compare_scans(now, pos_error, err[2] if ref is not None else NAN)
 
         if self.T_real_to_twin is not None and self.tick_count % 2 == 0:
             for name, side in self.sides.items():

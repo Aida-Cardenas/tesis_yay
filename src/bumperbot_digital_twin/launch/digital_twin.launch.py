@@ -74,8 +74,9 @@ def generate_launch_description():
         DeclareLaunchArgument("fake_real_fault_duration", default_value="3.0"),
         DeclareLaunchArgument("fake_twin_gain", default_value="0.9"),
         DeclareLaunchArgument("fake_twin_tau", default_value="0.1"),
-        DeclareLaunchArgument("arena", default_value="[0.0]",
-                              description="Recinto de los robots de mentira para el LiDAR: [xmin, xmax, ymin, ymax]"),
+        DeclareLaunchArgument("arena", default_value="[-0.5,2.0,-1.0,1.0]",
+                              description="Recinto de los robots de mentira (LiDAR y navegador): [xmin, xmax, ymin, ymax], "
+                                          "el mismo del mundo arena. [0.0] = sin recinto"),
         DeclareLaunchArgument("fake_real_scan_noise", default_value="0.02"),
         DeclareLaunchArgument("detector_model_file", default_value=""),
         DeclareLaunchArgument("gains_file", default_value="",

@@ -42,6 +42,11 @@ def generate_launch_description():
         model_path
         )
 
+    ignition_resource_path = SetEnvironmentVariable(
+        "IGN_GAZEBO_RESOURCE_PATH",
+        model_path
+        )
+
     ros_distro = os.environ["ROS_DISTRO"]
     is_ignition = "True" if ros_distro == "humble" else "False"
 
@@ -97,6 +102,7 @@ def generate_launch_description():
         world_name_arg,
         gui_arg,
         gazebo_resource_path,
+        ignition_resource_path,
         robot_state_publisher_node,
         gazebo,
         gz_spawn_entity,

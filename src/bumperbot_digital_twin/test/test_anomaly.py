@@ -53,3 +53,35 @@ def test_unexpected_motion():
 def test_model_deviation():
     ev = run(lambda t, d: (0.2, 0.0, 0.6 * d.pred_v.y, 0.0, 0.0), n=600)
     assert starts(ev) == ["desviacion_modelo"]
+
+
+def test_stall_lock_holds_and_retries_without_flapping():
+    from bumperbot_digital_twin.anomaly import StallLock
+    lock = StallLock(hold_time=3.0, retry_time=1.5)
+    assert lock.update(0.0, False) is None
+    assert lock.update(1.0, True) == "lock"
+    assert lock.update(2.0, False) is None and lock.locked
+    assert lock.update(4.0, True) == "unlock"
+    assert lock.update(4.5, True) is None
+    assert lock.update(5.6, True) == "lock"
+    assert lock.update(8.7, False) == "unlock"
+    assert lock.update(20.0, False) is None and not lock.locked
+
+
+def test_frozen_detector_keeps_stall_active_until_robot_really_moves():
+    from bumperbot_digital_twin.anomaly import AnomalyDetector, StallLock
+    det = AnomalyDetector()
+    lock = StallLock(hold_time=3.0, retry_time=1.5)
+    events = []
+    t = 0.0
+    while t < 12.0:
+        jammed = t < 7.0
+        if lock.update(t, "atasco" in det.active) or lock.locked:
+            t += 0.02
+            continue
+        meas = 0.0 if jammed else 0.2
+        events += [(round(e.t, 2), e.kind, e.phase) for e in det.update(t, 0.2, 0.0, meas, 0.0, 0.0)]
+        t += 0.02
+    stall = [e for e in events if e[1] == "atasco"]
+    assert [e[2] for e in stall] == ["inicio", "fin"]
+    assert stall[1][0] > 7.0

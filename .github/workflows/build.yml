@@ -20,13 +20,19 @@ jobs:
         run: |
           apt-get update
           rosdep update --rosdistro humble
-          rosdep install --from-paths src --ignore-src --rosdistro humble -r -y
+          rosdep install --from-paths src --ignore-src --rosdistro humble -y
           apt-get install -y python3-transforms3d liburdfdom-tools python3-pytest ros-humble-key-teleop
 
       - name: colcon build
         run: |
           source /opt/ros/humble/setup.bash
           colcon build --event-handlers console_cohesion+
+
+      - name: Pruebas C++ (protocolo serie del Arduino)
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon test --packages-select bumperbot_firmware --event-handlers console_cohesion+
+          colcon test-result --verbose
 
       - name: Verificar que los launch y URDF cargan
         run: |

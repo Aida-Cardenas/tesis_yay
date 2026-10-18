@@ -106,6 +106,9 @@ class TrajectoryPlayer:
     def play(self, side, pattern, linear_speed=0.15, angular_speed=0.6, distance=1.0, radius=0.5,
              laps=1, pause=1.0, rate=20.0, blocking=True):
         segments = build_segments(pattern, linear_speed, angular_speed, distance, radius, laps, pause)
+        if self.thread is not None and self.thread.is_alive():
+            self.stop_flag.set()
+            self.thread.join(timeout=2.0)
         self.stop_flag.clear()
 
         def run():

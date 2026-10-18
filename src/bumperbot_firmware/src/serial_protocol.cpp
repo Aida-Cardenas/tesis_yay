@@ -1,0 +1,103 @@
+#include "bumperbot_firmware/serial_protocol.hpp"
+
+#include <cmath>
+#include <cstdlib>
+#include <iomanip>
+#include <sstream>
+
+namespace bumperbot_firmware
+{
+
+namespace
+{
+bool parse_number(const std::string & text, double & value)
+{
+  if (text.empty())
+  {
+    return false;
+  }
+  const char * begin = text.c_str();
+  char * end = nullptr;
+  value = std::strtod(begin, &end);
+  while (end != nullptr && (*end == ' ' || *end == '\r' || *end == '\n'))
+  {
+    ++end;
+  }
+  return end != begin && end != nullptr && *end == '\0' && std::isfinite(value);
+}
+
+void append_wheel(std::ostringstream & out, char wheel, double velocity)
+{
+  const double magnitude = std::abs(velocity);
+  out << wheel << (velocity >= 0.0 ? 'p' : 'n') << (magnitude < 10.0 ? "0" : "")
+      << std::fixed << std::setprecision(2) << magnitude << ",";
+}
+}  // namespace
+
+WheelReading parse_wheel_message(const std::string & message)
+{
+  WheelReading reading;
+  std::stringstream ss(message);
+  std::string token;
+  while (std::getline(ss, token, ','))
+  {
+    while (!token.empty() && (token.back() == '\r' || token.back() == '\n' || token.back() == ' '))
+    {
+      token.pop_back();
+    }
+    if (token.empty())
+    {
+      continue;
+    }
+    double value = 0.0;
+    const bool valid_header = token.size() >= 3 && (token[0] == 'r' || token[0] == 'l') &&
+                              (token[1] == 'p' || token[1] == 'n');
+    if (!valid_header || !parse_number(token.substr(2), value))
+    {
+      ++reading.rejected;
+      continue;
+    }
+    const double signed_value = token[1] == 'p' ? value : -value;
+    if (token[0] == 'r')
+    {
+      reading.right = signed_value;
+      reading.has_right = true;
+    }
+    else
+    {
+      reading.left = signed_value;
+      reading.has_left = true;
+    }
+  }
+  return reading;
+}
+
+std::string format_wheel_command(double right, double left)
+{
+  std::ostringstream out;
+  append_wheel(out, 'r', right);
+  append_wheel(out, 'l', left);
+  return out.str();
+}
+
+int find_wheel_index(const std::vector<std::string> & joint_names, const std::string & side)
+{
+  const std::string exact = "wheel_" + side + "_joint";
+  for (size_t i = 0; i < joint_names.size(); ++i)
+  {
+    if (joint_names[i] == exact)
+    {
+      return static_cast<int>(i);
+    }
+  }
+  for (size_t i = 0; i < joint_names.size(); ++i)
+  {
+    if (joint_names[i].find(side) != std::string::npos)
+    {
+      return static_cast<int>(i);
+    }
+  }
+  return -1;
+}
+
+}  // namespace bumperbot_firmware

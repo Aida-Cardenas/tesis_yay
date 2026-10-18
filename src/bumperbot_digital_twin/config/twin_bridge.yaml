@@ -43,6 +43,7 @@ twin_bridge:
     real_scan_frame: laser_link
     scan_compare_rate: 2.0
     scan_sync_tolerance: 0.05
+    scan_heading_tolerance: 0.035
     scan_max_linear: 0.05
     scan_max_angular: 0.3
 

@@ -161,3 +161,37 @@ class AnomalyDetector:
                     for key in self.cusum:
                         self.cusum[key] = 0.0
         return events
+
+
+class StallLock:
+    """Bloqueo de seguridad (lock de twist_mux) mientras dure un atasco.
+
+    Al bloquear, el comando cae a cero y la predicción del modelo también, así que
+    el detector creería que el atasco terminó. Para no registrar finales falsos ni
+    bloquear y desbloquear cada segundo, mientras el bloqueo está puesto el detector
+    no se evalúa: el bloqueo dura `hold_time`, luego se libera y se da `retry_time`
+    para que el robot vuelva a intentar moverse. Si el atasco sigue, se vuelve a
+    bloquear; el evento "atasco fin" solo se registra cuando el robot de verdad se
+    mueve como se le ordena (o deja de recibir órdenes).
+    """
+
+    def __init__(self, hold_time=3.0, retry_time=1.5):
+        self.hold_time = hold_time
+        self.retry_time = retry_time
+        self.locked = False
+        self.until = None
+        self.retry_until = None
+
+    def update(self, t, stall_active):
+        """Devuelve "lock", "unlock" o None."""
+        if self.locked:
+            if t >= self.until:
+                self.locked = False
+                self.retry_until = t + self.retry_time
+                return "unlock"
+            return None
+        if stall_active and (self.retry_until is None or t >= self.retry_until):
+            self.locked = True
+            self.until = t + self.hold_time
+            return "lock"
+        return None

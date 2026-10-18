@@ -34,6 +34,17 @@ STATUS_NAMES = {0: "desconocido", 1: "aceptada", 2: "en curso", 3: "cancelando",
                 5: "cancelada", 6: "abortada"}
 
 
+def json_safe(value):
+    """Convierte NaN e infinito en null para que el JSON sea válido."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {k: json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(v) for v in value]
+    return value
+
+
 def wait_future(future, timeout):
     end = time.monotonic() + timeout
     while not future.done():
@@ -244,7 +255,7 @@ def save_result(result, preview, execution, out_dir, plots):
     os.makedirs(out_dir, exist_ok=True)
     base = os.path.join(out_dir, f"vista_previa_{result['meta']}")
     with open(base + ".json", "w") as f:
-        json.dump(result, f, indent=2, ensure_ascii=False, default=float)
+        json.dump(json_safe(result), f, indent=2, ensure_ascii=False, default=float)
     with open(base + ".csv", "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["robot", "t", "x", "y", "yaw"])
@@ -421,7 +432,7 @@ def main(argv=None):
             with open(os.path.join(out_dir, "informe_navegacion.md"), "w") as f:
                 f.write(md)
             with open(os.path.join(out_dir, "informe_navegacion.json"), "w") as f:
-                json.dump(results, f, indent=2, ensure_ascii=False, default=float)
+                json.dump(json_safe(results), f, indent=2, ensure_ascii=False, default=float)
             print("\n" + md)
             print(f"Resultados en {out_dir}")
         dual.shutdown()

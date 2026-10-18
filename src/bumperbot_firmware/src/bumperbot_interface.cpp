@@ -1,5 +1,7 @@
 #include "bumperbot_firmware/bumperbot_interface.hpp"
+#include "bumperbot_firmware/serial_protocol.hpp"
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
+#include <algorithm>
 #include <pluginlib/class_list_macros.hpp>
 
 
@@ -45,9 +47,29 @@ CallbackReturn BumperbotInterface::on_init(const hardware_interface::HardwareInf
     return CallbackReturn::FAILURE;
   }
 
-  velocity_commands_.reserve(info_.joints.size());
-  position_states_.reserve(info_.joints.size());
-  velocity_states_.reserve(info_.joints.size());
+  // Each wheel is located by its joint name, not by its position in the URDF:
+  // the URDF lists the left wheel first, while the Arduino protocol names the
+  // right wheel 'r' and the left one 'l'.
+  std::vector<std::string> names;
+  for (const auto & joint : info_.joints)
+  {
+    names.push_back(joint.name);
+  }
+  right_index_ = find_wheel_index(names, "right");
+  left_index_ = find_wheel_index(names, "left");
+  if (info_.joints.size() != 2 || right_index_ < 0 || left_index_ < 0 || right_index_ == left_index_)
+  {
+    RCLCPP_FATAL(rclcpp::get_logger("BumperbotInterface"),
+                 "Expected two joints named wheel_right_joint and wheel_left_joint");
+    return CallbackReturn::FAILURE;
+  }
+  RCLCPP_INFO(rclcpp::get_logger("BumperbotInterface"),
+              "Right wheel = %s, left wheel = %s",
+              names[right_index_].c_str(), names[left_index_].c_str());
+
+  velocity_commands_.assign(info_.joints.size(), 0.0);
+  position_states_.assign(info_.joints.size(), 0.0);
+  velocity_states_.assign(info_.joints.size(), 0.0);
   last_run_ = rclcpp::Clock().now();
 
   return CallbackReturn::SUCCESS;
@@ -90,10 +112,10 @@ CallbackReturn BumperbotInterface::on_activate(const rclcpp_lifecycle::State &)
 {
   RCLCPP_INFO(rclcpp::get_logger("BumperbotInterface"), "Starting robot hardware ...");
 
-  // Reset commands and states
-  velocity_commands_ = { 0.0, 0.0 };
-  position_states_ = { 0.0, 0.0 };
-  velocity_states_ = { 0.0, 0.0 };
+  // Reset commands and states (in place, the exported interfaces point here)
+  std::fill(velocity_commands_.begin(), velocity_commands_.end(), 0.0);
+  std::fill(position_states_.begin(), position_states_.end(), 0.0);
+  std::fill(velocity_states_.begin(), velocity_states_.end(), 0.0);
 
   try
   {
@@ -138,29 +160,35 @@ CallbackReturn BumperbotInterface::on_deactivate(const rclcpp_lifecycle::State &
 hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
                                                           const rclcpp::Duration &)
 {
-  // Interpret the string
   if(arduino_.IsDataAvailable())
   {
     auto dt = (rclcpp::Clock().now() - last_run_).seconds();
     std::string message;
-    arduino_.ReadLine(message);
-    std::stringstream ss(message);
-    std::string res;
-    int multiplier = 1;
-    while(std::getline(ss, res, ','))
+    try
     {
-      multiplier = res.at(1) == 'p' ? 1 : -1;
-
-      if(res.at(0) == 'r')
-      {
-        velocity_states_.at(0) = multiplier * std::stod(res.substr(2, res.size()));
-        position_states_.at(0) += velocity_states_.at(0) * dt;
-      }
-      else if(res.at(0) == 'l')
-      {
-        velocity_states_.at(1) = multiplier * std::stod(res.substr(2, res.size()));
-        position_states_.at(1) += velocity_states_.at(1) * dt;
-      }
+      arduino_.ReadLine(message);
+    }
+    catch (...)
+    {
+      RCLCPP_WARN_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 2000,
+                           "Could not read a line from %s", port_.c_str());
+      return hardware_interface::return_type::OK;
+    }
+    const WheelReading reading = parse_wheel_message(message);
+    if (reading.rejected > 0)
+    {
+      RCLCPP_WARN_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 2000,
+                           "Ignored malformed data from the Arduino: '%s'", message.c_str());
+    }
+    if (reading.has_right)
+    {
+      velocity_states_.at(right_index_) = reading.right;
+      position_states_.at(right_index_) += reading.right * dt;
+    }
+    if (reading.has_left)
+    {
+      velocity_states_.at(left_index_) = reading.left;
+      position_states_.at(left_index_) += reading.left * dt;
     }
     last_run_ = rclcpp::Clock().now();
   }
@@ -171,42 +199,17 @@ hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
 hardware_interface::return_type BumperbotInterface::write(const rclcpp::Time &,
                                                           const rclcpp::Duration &)
 {
-  // Implement communication protocol with the Arduino
-  std::stringstream message_stream;
-  char right_wheel_sign = velocity_commands_.at(0) >= 0 ? 'p' : 'n';
-  char left_wheel_sign = velocity_commands_.at(1) >= 0 ? 'p' : 'n';
-  std::string compensate_zeros_right = "";
-  std::string compensate_zeros_left = "";
-  if(std::abs(velocity_commands_.at(0)) < 10.0)
-  {
-    compensate_zeros_right = "0";
-  }
-  else
-  {
-    compensate_zeros_right = "";
-  }
-  if(std::abs(velocity_commands_.at(1)) < 10.0)
-  {
-    compensate_zeros_left = "0";
-  }
-  else
-  {
-    compensate_zeros_left = "";
-  }
-  
-  message_stream << std::fixed << std::setprecision(2) << 
-    "r" << right_wheel_sign << compensate_zeros_right << std::abs(velocity_commands_.at(0)) << 
-    ",l" <<  left_wheel_sign << compensate_zeros_left << std::abs(velocity_commands_.at(1)) << ",";
-
+  const std::string message = format_wheel_command(velocity_commands_.at(right_index_),
+                                                   velocity_commands_.at(left_index_));
   try
   {
-    arduino_.Write(message_stream.str());
+    arduino_.Write(message);
   }
   catch (...)
   {
     RCLCPP_ERROR_STREAM(rclcpp::get_logger("BumperbotInterface"),
                         "Something went wrong while sending the message "
-                            << message_stream.str() << " to the port " << port_);
+                            << message << " to the port " << port_);
     return hardware_interface::return_type::ERROR;
   }
 

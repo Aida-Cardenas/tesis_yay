@@ -66,6 +66,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self.rtt_hist = deque()
         self.last_status = {}
         self._updating_flags = False
+        self._flags_changed_at = -1e9
         self.setWindowTitle("Gemelo digital · panel de control")
         self.resize(1320, 900)
 
@@ -268,6 +269,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
     def _flags_changed(self):
         if not self._updating_flags:
+            self._flags_changed_at = time.monotonic()
             self.actions.set_flags(self.chk_feedback.isChecked(), self.chk_comp.isChecked(),
                                    self.chk_model.isChecked())
 
@@ -304,11 +306,12 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self.m["net"].set("Sin degradar" if not net and not loss else f"{net:.0f} ms · {loss * 100:.0f} %")
         anomalies = s.get("anomalies", "")
         self.m["anom"].set(anomalies.replace("|", ", ").replace("_", " ") or "Ninguna", BAD if anomalies else GOOD)
-        self._updating_flags = True
-        self.chk_feedback.setChecked(bool(s.get("feedback")))
-        self.chk_comp.setChecked(bool(s.get("compensation")))
-        self.chk_model.setChecked(bool(s.get("twin_model")))
-        self._updating_flags = False
+        if time.monotonic() - self._flags_changed_at > 2.0:
+            self._updating_flags = True
+            self.chk_feedback.setChecked(bool(s.get("feedback")))
+            self.chk_comp.setChecked(bool(s.get("compensation")))
+            self.chk_model.setChecked(bool(s.get("twin_model")))
+            self._updating_flags = False
         if not self._gains_loaded and all(isinstance(s.get(k), float) and s.get(k) > 0 for k in ("kx", "ky", "ktheta")):
             for k in ("kx", "ky", "ktheta"):
                 self.sp_gains[k].setValue(s[k])

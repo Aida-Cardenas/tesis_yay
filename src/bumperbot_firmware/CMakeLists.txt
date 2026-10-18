@@ -20,6 +20,7 @@ ament_python_install_package(${PROJECT_NAME})
 
 add_library(${PROJECT_NAME} SHARED 
   src/bumperbot_interface.cpp
+  src/serial_protocol.cpp
 )
 target_include_directories(${PROJECT_NAME} PRIVATE 
   include
@@ -73,5 +74,14 @@ ament_export_dependencies(
   rclcpp
   rclcpp_lifecycle
 )
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_serial_protocol
+    test/test_serial_protocol.cpp
+    src/serial_protocol.cpp
+  )
+  target_include_directories(test_serial_protocol PRIVATE include)
+endif()
 
 ament_package()

@@ -21,7 +21,7 @@ import numpy as np
 from bumperbot_digital_twin.analyze_log import analyze
 
 TAG_RE = re.compile(r"twin_\d{8}_\d{6}_(?P<tag>.+)\.csv$")
-RUN_RE = re.compile(r"^(?P<exp>.+?)_r(?P<rep>\d+)$")
+RUN_RE = re.compile(r"^(?P<exp>.+?)_r(?P<rep>\d+)(?:-\d+)?$")
 
 
 def experiment_of(path):
@@ -31,6 +31,68 @@ def experiment_of(path):
     tag = m.group("tag")
     r = RUN_RE.match(tag)
     return (r.group("exp"), int(r.group("rep"))) if r else (tag, 1)
+
+
+SERIOUS_ANOMALIES = {"atasco", "deslizamiento", "movimiento_no_comandado"}
+DEFAULT_GAINS_TEXT = "1.5/6.0/3.0"
+
+
+def protocol_steps(protocol):
+    """Parámetros de cada experimento del protocolo (defaults + los propios)."""
+    if not protocol:
+        return {}
+    defaults = dict(protocol.get("defaults") or {})
+    steps = {}
+    for item in protocol.get("experiments", []):
+        if "name" in item and "calibrate_from" not in item and "tune" not in item:
+            steps[item["name"]] = dict(defaults, **item)
+    return steps
+
+
+def latency_series(table, protocol=None):
+    """Curvas de error contra retardo, usando solo experimentos comparables.
+
+    Se toman los experimentos con corrección, sin gemelo calibrado, con las ganancias por
+    defecto, sin fallas provocadas y con el mismo recorrido; se separan por líder y por
+    compensación. Así cada curva varía solo en el retardo. Se usa una sola métrica para
+    todos los puntos: el error real si está en todos, si no el del puente.
+    """
+    steps = protocol_steps(protocol)
+    eligible = []
+    for exp, row in table.items():
+        step = steps.get(exp, {})
+        if row["realimentacion"] != "sí" or row["modelo"] != "no":
+            continue
+        if row.get("ganancias", "—") not in ("—", DEFAULT_GAINS_TEXT) or step.get("gains") == "tuned":
+            continue
+        if step.get("pattern") == "free" or step.get("instructions"):
+            continue
+        if SERIOUS_ANOMALIES & set(row.get("anomalias", {})):
+            continue
+        if "," in str(row["lider"]):
+            continue
+        eligible.append((exp, row, step.get("pattern", "square" if steps else "")))
+    delayed_patterns = [pat for _, row, pat in eligible if row["red_ms"] > 0]
+    if not delayed_patterns:
+        return {"metric": "rmse", "pattern": "", "series": {}}
+    pattern = max(set(delayed_patterns), key=delayed_patterns.count)
+    chosen = [(exp, row) for exp, row, pat in eligible if pat == pattern]
+    use_real = all(math.isfinite(row["rmse_real"][0]) for _, row in chosen)
+    key = "rmse_real" if use_real else "rmse"
+    grouped = {}
+    for exp, row in chosen:
+        value = row[key][0]
+        if not math.isfinite(value):
+            continue
+        grouped.setdefault((row["lider"], row["compensacion"]), {}).setdefault(row["red_ms"], []).append((value, exp))
+    series = {}
+    for k, by_delay in grouped.items():
+        pts = [(d, float(np.mean([v for v, _ in vals])), [e for _, e in vals]) for d, vals in sorted(by_delay.items())]
+        if len(pts) >= 2:
+            series[k] = pts
+    if len({p[0] for pts in series.values() for p in pts}) < 3:
+        series = {}
+    return {"metric": key, "pattern": pattern, "series": series}
 
 
 def welch_t(a, b):
@@ -145,9 +207,9 @@ def build_report(csv_paths, out_dir, protocol=None, plots=True):
 
     results_cmp = []
     if comparisons:
-        lines += ["", "## Comparaciones (prueba t de Welch sobre el RMSE de posición)", "",
-                  "| A | B | RMSE A [cm] | RMSE B [cm] | Diferencia [cm] | t | gl | p | ¿Significativa (α=0,05)? |",
-                  "|---|---|---|---|---|---|---|---|---|"]
+        lines += ["", "## Comparaciones (prueba t de Welch)", "",
+                  "| A | B | Métrica | A | B | Diferencia | t | gl | p | ¿Significativa (α=0,05)? |",
+                  "|---|---|---|---|---|---|---|---|---|---|"]
         for pair in comparisons:
             a_name, b_name = pair[0], pair[1]
             key = pair[2] if len(pair) > 2 else "rmse"
@@ -160,29 +222,36 @@ def build_report(csv_paths, out_dir, protocol=None, plots=True):
             sig = "sí" if math.isfinite(p) and p < 0.05 else "no"
             results_cmp.append({"a": a_name, "b": b_name, "metrica": key, "media_a": ma, "media_b": mb,
                                 "t": t, "gl": df, "p": p, "significativa": sig == "sí"})
-            lines.append(f"| {a_name} | {b_name} | {ma * 100:.2f} | {mb * 100:.2f} | {(ma - mb) * 100:+.2f} "
-                         f"| {t:.2f} | {df:.1f} | {p:.4f} | {sig} |")
+            name, scale, unit = METRICS[key]
+            lines.append(f"| {a_name} | {b_name} | {name} | {ma * scale:.2f} {unit} | {mb * scale:.2f} {unit} "
+                         f"| {(ma - mb) * scale:+.2f} {unit} | {t:.2f} | {df:.1f} | {p:.4f} | {sig} |")
 
-    sweep = [(row["red_ms"], row["compensacion"], row["rmse_real"][0] if math.isfinite(row["rmse_real"][0])
-              else row["rmse"][0], exp) for exp, row in table.items()]
-    delays = sorted({s[0] for s in sweep})
-    if plots and len(delays) >= 3:
+    sweep = latency_series(table, protocol)
+    if plots and sweep["series"]:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(7, 4))
-        for comp, color, label in (("no", "#d62728", "Sin compensación"), ("sí", "#1f77b4", "Con compensación")):
-            pts = sorted((d, e) for d, c, e, _ in sweep if c == comp and math.isfinite(e))
-            if pts:
-                ax.plot([p[0] for p in pts], [p[1] * 100 for p in pts], "o-", color=color, label=label)
+        colors = {"no": "#d62728", "sí": "#1f77b4"}
+        styles = {"real": "-", "twin": "--"}
+        for (leader, comp), pts in sorted(sweep["series"].items()):
+            label = (f"{'Líder real' if leader == 'real' else 'Líder gemelo'}, "
+                     f"{'con' if comp == 'sí' else 'sin'} compensación")
+            ax.plot([p[0] for p in pts], [p[1] * 100 for p in pts], "o", ls=styles.get(leader, "-"),
+                    color=colors.get(comp, "#444444"), label=label)
         ax.set_xlabel("Retardo de red emulado, un sentido [ms]")
-        ax.set_ylabel("RMSE de posición [cm]")
+        ax.set_ylabel(f"{METRICS[sweep['metric']][0]} [cm]")
+        ax.set_title(f"Recorrido: {sweep['pattern']} · con corrección, sin modelo calibrado, ganancias por defecto",
+                     fontsize=9)
         ax.grid(alpha=0.3)
-        ax.legend()
+        ax.legend(fontsize=8)
         fig.tight_layout()
         fig.savefig(os.path.join(out_dir, "error_vs_latencia.png"), dpi=150)
         plt.close(fig)
-        lines += ["", "## Error en función de la latencia", "", "![Error vs latencia](error_vs_latencia.png)"]
+        used = ", ".join(e for pts in sweep["series"].values() for p in pts for e in p[2])
+        lines += ["", "## Error en función de la latencia", "",
+                  f"Solo experimentos que difieren únicamente en el retardo ({used}); métrica: "
+                  f"{METRICS[sweep['metric']][0]}.", "", "![Error vs latencia](error_vs_latencia.png)"]
 
     anomalies = [(exp, row["anomalias"]) for exp, row in table.items() if row["anomalias"]]
     if anomalies:

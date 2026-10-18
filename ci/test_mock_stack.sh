@@ -21,13 +21,17 @@ check() {
   fi
 }
 
+printf 'bumperbot_controller:\n  ros__parameters:\n    wheel_separation_multiplier: 1.02\n' > /tmp/calibracion_ci.yaml
+
 setsid ros2 launch bumperbot_digital_twin real_side.launch.py use_mock_hardware:=true use_ekf:=true real_domain:=10 \
+  calibration_file:=/tmp/calibracion_ci.yaml \
   > /tmp/mock_stack.log 2>&1 &
 PID=$!
 sleep 30
 
 check "controladores activos" bash -c "ros2 control list_controllers | grep -E 'bumperbot_controller.*active' && ros2 control list_controllers | grep -E 'joint_state_broadcaster.*active'"
 check "enable_odom_tf false con EKF" bash -c "ros2 param get /bumperbot_controller enable_odom_tf | grep -i false"
+check "calibración aplicada junto con el EKF" bash -c "ros2 param get /bumperbot_controller wheel_separation_multiplier | grep 1.02"
 check "EKF publica odometry filtered" bash -c "ros2 topic echo --once /odometry/filtered > /dev/null"
 check "TF odom a base_footprint" bash -c "timeout 8 ros2 run tf2_ros tf2_echo odom base_footprint 2>&1 | grep -m1 Translation"
 check "Nav2 controller_server activo" bash -c "ros2 lifecycle get /controller_server | grep -i active"
