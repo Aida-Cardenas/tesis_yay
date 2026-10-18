@@ -14,13 +14,18 @@
 #define left_encoder_phaseA 2   // Interrupt
 #define left_encoder_phaseB 4
 
-// Encoders
-unsigned int right_encoder_counter = 0;
-unsigned int left_encoder_counter = 0;
-String right_wheel_sign = "p";  // 'p' = positive, 'n' = negative
-String left_wheel_sign = "p";  // 'p' = positive, 'n' = negative
+// Encoders (written inside the interrupts, so volatile and read with interrupts off)
+volatile unsigned int right_encoder_counter = 0;
+volatile unsigned int left_encoder_counter = 0;
+volatile char right_wheel_sign = 'p';  // 'p' = positive, 'n' = negative
+volatile char left_wheel_sign = 'p';  // 'p' = positive, 'n' = negative
 unsigned long last_millis = 0;
 const unsigned long interval = 100;
+
+// Safety: if no complete command arrives for this long (ROS crashed, cable
+// unplugged, launch closed), both wheels are stopped.
+const unsigned long command_timeout = 500;
+unsigned long last_cmd_millis = 0;
 
 // Interpret Serial Messages
 bool is_right_wheel_cmd = false;
@@ -146,6 +151,7 @@ void loop() {
       {
         left_wheel_cmd_vel = atof(value);
         is_cmd_complete = true;
+        last_cmd_millis = millis();
       }
       // Reset for next command
       value_idx = 0;
@@ -169,10 +175,24 @@ void loop() {
 
   // Encoder
   unsigned long current_millis = millis();
+  if(current_millis - last_cmd_millis > command_timeout)
+  {
+    right_wheel_cmd_vel = 0.0;
+    left_wheel_cmd_vel = 0.0;
+  }
   if(current_millis - last_millis >= interval)
   {
-    right_wheel_meas_vel = (10 * right_encoder_counter * (60.0/385.0)) * 0.10472;
-    left_wheel_meas_vel = (10 * left_encoder_counter * (60.0/385.0)) * 0.10472;
+    noInterrupts();
+    unsigned int right_count = right_encoder_counter;
+    unsigned int left_count = left_encoder_counter;
+    char right_sign = right_wheel_sign;
+    char left_sign = left_wheel_sign;
+    right_encoder_counter = 0;
+    left_encoder_counter = 0;
+    interrupts();
+
+    right_wheel_meas_vel = (10 * right_count * (60.0/385.0)) * 0.10472;
+    left_wheel_meas_vel = (10 * left_count * (60.0/385.0)) * 0.10472;
     
     rightMotor.Compute();
     leftMotor.Compute();
@@ -187,11 +207,14 @@ void loop() {
       left_wheel_cmd = 0.0;
     }
 
-    String encoder_read = "r" + right_wheel_sign + String(right_wheel_meas_vel) + ",l" + left_wheel_sign + String(left_wheel_meas_vel) + ",";
-    Serial.println(encoder_read);
+    Serial.print('r');
+    Serial.print(right_sign);
+    Serial.print(right_wheel_meas_vel, 2);
+    Serial.print(",l");
+    Serial.print(left_sign);
+    Serial.print(left_wheel_meas_vel, 2);
+    Serial.println(',');
     last_millis = current_millis;
-    right_encoder_counter = 0;
-    left_encoder_counter = 0;
 
     analogWrite(L298N_enA, right_wheel_cmd);
     analogWrite(L298N_enB, left_wheel_cmd);
@@ -203,11 +226,11 @@ void rightEncoderCallback()
 {
   if(digitalRead(right_encoder_phaseB) == HIGH)
   {
-    right_wheel_sign = "p";
+    right_wheel_sign = 'p';
   }
   else
   {
-    right_wheel_sign = "n";
+    right_wheel_sign = 'n';
   }
   right_encoder_counter++;
 }
@@ -217,11 +240,11 @@ void leftEncoderCallback()
 {
   if(digitalRead(left_encoder_phaseB) == HIGH)
   {
-    left_wheel_sign = "n";
+    left_wheel_sign = 'n';
   }
   else
   {
-    left_wheel_sign = "p";
+    left_wheel_sign = 'p';
   }
   left_encoder_counter++;
 }

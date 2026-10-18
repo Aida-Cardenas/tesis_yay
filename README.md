@@ -88,7 +88,7 @@ El único mundo es `arena`, el recinto rectangular de pruebas que también se ar
 - Joystick: se lanza automáticamente con el bringup.
 - Teclado: `ros2 run key_teleop key_teleop --ros-args -p twist_stamped_enabled:=false`
 
-Prioridades en `twist_mux`: joystick (99) > gemelo digital (95) > teclado (90) > Nav2 (80). El lock `safety_stop` (255) bloquea todo.
+Prioridades en `twist_mux`: joystick (99) > gemelo digital (95) > teclado (90) > Nav2 (80). Los locks `safety_stop` (parada por LiDAR) y `anomaly_stop` (atasco detectado por el gemelo), ambos con prioridad 255, bloquean todo.
 
 ### Guardar un mapa nuevo
 

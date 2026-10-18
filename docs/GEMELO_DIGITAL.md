@@ -88,7 +88,7 @@ Calcula `wheel_radius_multiplier` y `wheel_separation_multiplier` de `diff_drive
 | `latencia_alta` (puente) | RTT por encima de `latency_alert_ms` | Wi-Fi saturado |
 | `perdida_datos` (puente) | dejan de llegar datos de un robot | robot apagado, red caída |
 
-Los eventos (`bumperbot_msgs/TwinAnomaly`, con inicio y fin) se publican en `/digital_twin/events` en los dos dominios, aparecen en el panel y en RViz y quedan en `twin_<fecha>_<tag>_eventos.csv`. Con `lock_on_stall:=true` el detector además bloquea el robot (lock `safety_stop` de twist_mux) cuando detecta un atasco: lo mantiene bloqueado `lock_hold_time` (3 s), lo libera para reintentar y, si el atasco sigue `lock_retry_time` (1,5 s) después, lo vuelve a bloquear. Mientras está bloqueado, el detector se congela para no registrar un falso "fin del atasco".
+Los eventos (`bumperbot_msgs/TwinAnomaly`, con inicio y fin) se publican en `/digital_twin/events` en los dos dominios, aparecen en el panel y en RViz y quedan en `twin_<fecha>_<tag>_eventos.csv`. Con `lock_on_stall:=true` el detector además bloquea el robot (lock `anomaly_stop` de twist_mux, distinto del de `safety_stop` para que uno no libere al otro) cuando detecta un atasco: lo mantiene bloqueado `lock_hold_time` (3 s), lo libera para reintentar y, si el atasco sigue `lock_retry_time` (1,5 s) después, lo vuelve a bloquear. Mientras está bloqueado, el detector se congela para no registrar un falso "fin del atasco".
 
 ## 5. Red degradada y compensación de latencia
 

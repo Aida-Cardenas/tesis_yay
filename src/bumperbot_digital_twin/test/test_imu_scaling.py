@@ -36,3 +36,28 @@ def test_signed_conversion_edges():
 def test_covariances_are_not_zero():
     cov = imu.covariance_diagonal(imu.GYRO_VARIANCE)
     assert cov[0] > 0 and cov[4] > 0 and cov[8] > 0 and cov[1] == 0
+
+
+def test_gyro_bias_is_measured_and_removed():
+    bias = imu.GyroBias(samples=100)
+    for _ in range(99):
+        assert not bias.add(0.01, -0.02, 0.03)
+    assert bias.add(0.01, -0.02, 0.03)
+    assert bias.bias == pytest.approx((0.01, -0.02, 0.03))
+    assert bias.correct(0.51, -0.02, 1.03) == pytest.approx((0.5, 0.0, 1.0))
+
+
+def test_gyro_bias_restarts_if_robot_moves():
+    bias = imu.GyroBias(samples=10)
+    for _ in range(5):
+        bias.add(0.0, 0.0, 0.03)
+    bias.add(0.0, 0.0, 0.5)
+    assert bias.restarts == 1 and not bias.ready
+    for _ in range(10):
+        bias.add(0.0, 0.0, 0.03)
+    assert bias.ready and bias.bias[2] == pytest.approx(0.03)
+
+
+def test_gyro_bias_can_be_disabled():
+    bias = imu.GyroBias(samples=0)
+    assert bias.ready and bias.correct(1.0, 2.0, 3.0) == (1.0, 2.0, 3.0)

@@ -6,7 +6,7 @@ from sensor_msgs.msg import Imu
 
 from bumperbot_firmware.mpu6050_math import (
     ACCEL_CONFIG_VALUE, ACCEL_VARIANCE, GYRO_CONFIG_VALUE, GYRO_VARIANCE,
-    accel_to_m_s2, covariance_diagonal, gyro_to_rad_s, to_signed,
+    GyroBias, accel_to_m_s2, covariance_diagonal, gyro_to_rad_s, to_signed,
 )
 
 PWR_MGMT_1   = 0x6B
@@ -41,12 +41,20 @@ class MPU6050_Driver(Node):
         self.imu_msg_.angular_velocity_covariance = covariance_diagonal(GYRO_VARIANCE)
         self.imu_msg_.linear_acceleration_covariance = covariance_diagonal(ACCEL_VARIANCE)
         self.frequency_ = 0.01
+        calibration_s = self.declare_parameter("gyro_calibration_time", 2.0).value
+        self.bias_ = GyroBias(calibration_s / self.frequency_)
+        self.reported_restarts_ = 0
+        if not self.bias_.ready:
+            self.get_logger().info(
+                f"Midiendo el cero del giroscopio durante {calibration_s:.1f} s: no muevas el robot")
         self.timer_ = self.create_timer(self.frequency_, self.timerCallback)
 
     def timerCallback(self):
         try:
             if not self.is_connected_:
                 self.init_i2c()
+                if not self.is_connected_:
+                    return
             
             # Read Accelerometer raw value
             acc_x = self.read_raw_data(ACCEL_XOUT_H)
@@ -61,9 +69,20 @@ class MPU6050_Driver(Node):
             self.imu_msg_.linear_acceleration.x = accel_to_m_s2(acc_x)
             self.imu_msg_.linear_acceleration.y = accel_to_m_s2(acc_y)
             self.imu_msg_.linear_acceleration.z = accel_to_m_s2(acc_z)
-            self.imu_msg_.angular_velocity.x = gyro_to_rad_s(gyro_x)
-            self.imu_msg_.angular_velocity.y = gyro_to_rad_s(gyro_y)
-            self.imu_msg_.angular_velocity.z = gyro_to_rad_s(gyro_z)
+            gx, gy, gz = gyro_to_rad_s(gyro_x), gyro_to_rad_s(gyro_y), gyro_to_rad_s(gyro_z)
+            if not self.bias_.ready:
+                done = self.bias_.add(gx, gy, gz)
+                if self.bias_.restarts > self.reported_restarts_:
+                    self.reported_restarts_ = self.bias_.restarts
+                    self.get_logger().warn("El robot se movió mientras se medía el giroscopio; empiezo otra vez")
+                if not done:
+                    return
+                bx, by, bz = self.bias_.bias
+                self.get_logger().info(f"Cero del giroscopio: x={bx:.4f} y={by:.4f} z={bz:.4f} rad/s")
+            gx, gy, gz = self.bias_.correct(gx, gy, gz)
+            self.imu_msg_.angular_velocity.x = gx
+            self.imu_msg_.angular_velocity.y = gy
+            self.imu_msg_.angular_velocity.z = gz
 
             self.imu_msg_.header.stamp = self.get_clock().now().to_msg()
             self.imu_pub_.publish(self.imu_msg_)

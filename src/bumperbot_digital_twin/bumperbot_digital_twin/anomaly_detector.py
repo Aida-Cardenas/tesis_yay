@@ -4,8 +4,9 @@
 Corre en el dominio del robot real (en la Raspberry Pi o en el PC). Compara lo que
 el robot debería hacer según el modelo identificado (twin_calibrate dynamics) con
 lo que miden los encoders y la IMU, y publica los eventos en
-/digital_twin/anomalies. Opcionalmente bloquea el robot (lock "safety_stop" de
-twist_mux) mientras dure un atasco.
+/digital_twin/anomalies. Opcionalmente bloquea el robot (lock "anomaly_stop" de
+twist_mux, separado del de safety_stop para que uno no libere al otro) mientras
+dure un atasco.
 """
 import csv
 import os
@@ -61,7 +62,7 @@ class AnomalyDetectorNode(Node):
         self.create_subscription(Odometry, "/bumperbot_controller/odom", self._odom_cb, 10)
         self.create_subscription(Imu, "/imu/out", self._imu_cb, qos_profile_sensor_data)
         self.pub = self.create_publisher(TwinAnomaly, "/digital_twin/anomalies", 10)
-        self.lock_pub = self.create_publisher(Bool, "safety_stop", 10)
+        self.lock_pub = self.create_publisher(Bool, "anomaly_stop", 10)
         self.writer = None
         if log_dir:
             path = os.path.join(os.path.expanduser(log_dir),

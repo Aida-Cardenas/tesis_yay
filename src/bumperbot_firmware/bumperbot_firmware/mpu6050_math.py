@@ -40,3 +40,48 @@ def accel_to_m_s2(raw):
 
 def covariance_diagonal(variance):
     return [variance, 0.0, 0.0, 0.0, variance, 0.0, 0.0, 0.0, variance]
+
+
+class GyroBias:
+    """Desviación del cero del giroscopio, medida con el robot quieto al arrancar.
+
+    El MPU6050 marca algunos °/s aunque no gire. Sin restarlo, el EKF integra un
+    giro que no existe y el detector de anomalías ve deslizamientos falsos.
+    Si durante la medición el giro varía más que `max_spread` (rad/s), se supone
+    que alguien movió el robot y se empieza de nuevo.
+    """
+
+    def __init__(self, samples, max_spread=0.05):
+        self.samples = int(samples)
+        self.max_spread = max_spread
+        self.bias = (0.0, 0.0, 0.0)
+        self.restarts = 0
+        self._reset()
+        self.ready = self.samples <= 0
+
+    def _reset(self):
+        self._sum = [0.0, 0.0, 0.0]
+        self._count = 0
+        self._low = [math.inf] * 3
+        self._high = [-math.inf] * 3
+
+    def add(self, x, y, z):
+        if self.ready:
+            return True
+        values = (x, y, z)
+        for i, v in enumerate(values):
+            self._sum[i] += v
+            self._low[i] = min(self._low[i], v)
+            self._high[i] = max(self._high[i], v)
+        self._count += 1
+        if max(h - l for h, l in zip(self._high, self._low)) > self.max_spread:
+            self.restarts += 1
+            self._reset()
+            return False
+        if self._count >= self.samples:
+            self.bias = tuple(s / self._count for s in self._sum)
+            self.ready = True
+        return self.ready
+
+    def correct(self, x, y, z):
+        return x - self.bias[0], y - self.bias[1], z - self.bias[2]

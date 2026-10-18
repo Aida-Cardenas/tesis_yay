@@ -114,6 +114,11 @@ Algunos de estos archivos se quitaron en la limpieza (ver arriba); la tabla se d
 | Con EKF y calibración, el spawner de Humble recibía dos `--param-file` | `controller.launch.py` | Se fusionan en un solo archivo |
 | `safety_stop` bajaba la velocidad del joystick cada vez que salía de la zona de peligro | `safety_stop.cpp` | Baja una sola vez por acercamiento y la sube al quedar libre |
 | La regla udev del Arduino no filtraba por `ttyUSB*` y otra línea cambiaba los permisos de todas las terminales | `udev/90-bumperbot.rules` | Reglas por `KERNEL` y sin la línea global |
+| Si el programa del robot se caía o se cerraba con el robot en movimiento, el Arduino seguía con la última velocidad indefinidamente | `robot_control.ino`, `bumperbot_interface.cpp` | El Arduino detiene las ruedas si pasa medio segundo sin recibir comandos, y la interfaz manda velocidad cero al cerrarse |
+| Los contadores de los encoders se leían mientras las interrupciones podían modificarlos, y las interrupciones creaban objetos `String` (memoria dinámica) | `robot_control.ino` | Lectura con las interrupciones desactivadas y signos como `char` |
+| El giroscopio se publicaba sin restar su desviación del cero (el MPU6050 marca algunos °/s estando quieto) | `mpu6050_driver.py` | Mide el cero durante 2 s al arrancar, con el robot quieto, y lo resta |
+| Si la IMU no respondía al arrancar, el driver se cerraba con un error | `mpu6050_driver.py` | Reintenta en silencio hasta que la IMU responde |
+| El bloqueo por atasco del gemelo usaba el mismo lock de `twist_mux` que `safety_stop`, así que uno podía liberar al otro | `anomaly_detector.py`, `twist_mux_locks.yaml` | Lock propio, `anomaly_stop` |
 
 `robot_control_inverted.ino` se eliminó: además de cambiar los lados invertía el sentido de motores y encoders, y con la interfaz corregida ya no hace falta. El único firmware es `robot_control.ino`.
 

@@ -18,6 +18,8 @@ BumperbotInterface::~BumperbotInterface()
   {
     try
     {
+      arduino_.Write(format_wheel_command(0.0, 0.0));
+      arduino_.DrainWriteBuffer();
       arduino_.Close();
     }
     catch (...)
@@ -141,6 +143,16 @@ CallbackReturn BumperbotInterface::on_deactivate(const rclcpp_lifecycle::State &
 
   if (arduino_.IsOpen())
   {
+    try
+    {
+      arduino_.Write(format_wheel_command(0.0, 0.0));
+      arduino_.DrainWriteBuffer();
+    }
+    catch (...)
+    {
+      RCLCPP_WARN_STREAM(rclcpp::get_logger("BumperbotInterface"),
+                         "Could not send the stop command to " << port_);
+    }
     try
     {
       arduino_.Close();

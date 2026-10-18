@@ -86,3 +86,19 @@ jobs:
         run: |
           apt-get install -y libegl1 libgl1-mesa-dri mesa-utils > /dev/null
           bash ci/test_gazebo_twin.sh
+
+  firmware:
+    name: firmware del Arduino (${{ matrix.board }})
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        board: ["arduino:avr:uno", "arduino:avr:nano"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/compile-sketches@v1
+        with:
+          fqbn: ${{ matrix.board }}
+          sketch-paths: |
+            - src/bumperbot_firmware/firmware/robot_control
+          libraries: |
+            - name: PID
