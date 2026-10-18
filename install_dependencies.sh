@@ -2,7 +2,7 @@
 # Instala todas las dependencias del workspace con rosdep.
 #
 #   ./install_dependencies.sh          -> PC de desarrollo (simulación Gazebo + RViz + robot)
-#   ./install_dependencies.sh robot    -> Raspberry Pi del robot (sin Gazebo, RViz ni turtlesim)
+#   ./install_dependencies.sh robot    -> Raspberry Pi del robot (sin Gazebo ni RViz)
 #
 # Requisitos: Ubuntu 22.04 + ROS 2 Humble instalado en /opt/ros/humble
 set -e
@@ -27,15 +27,12 @@ rosdep update --rosdistro humble
 
 SKIP_KEYS=""
 if [ "$MODE" = "robot" ]; then
-  SKIP_KEYS="ros_gz_sim ros_gz_bridge ign_ros2_control gz_ros2_control rviz2 joint_state_publisher_gui turtlesim nav2_bringup python3-pyqt5"
+  SKIP_KEYS="ros_gz_sim ros_gz_bridge ign_ros2_control gz_ros2_control rviz2 nav2_bringup python3-pyqt5"
   echo ">> Modo robot: se omiten $SKIP_KEYS"
 fi
 
 rosdep install --from-paths "$WS_DIR/src" --ignore-src --rosdistro humble -r -y \
   ${SKIP_KEYS:+--skip-keys "$SKIP_KEYS"}
-
-# tf_transformations necesita transforms3d
-sudo apt-get install -y python3-transforms3d || pip3 install transforms3d
 
 # Teleoperación por teclado (opcional, útil si no tienes joystick)
 sudo apt-get install -y ros-humble-key-teleop || true

@@ -21,7 +21,7 @@ jobs:
           apt-get update
           rosdep update --rosdistro humble
           rosdep install --from-paths src --ignore-src --rosdistro humble -y
-          apt-get install -y python3-transforms3d liburdfdom-tools python3-pytest ros-humble-key-teleop
+          apt-get install -y liburdfdom-tools python3-pytest ros-humble-key-teleop
 
       - name: colcon build
         run: |

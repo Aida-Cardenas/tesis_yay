@@ -2,7 +2,7 @@ import os
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.conditions import IfCondition, UnlessCondition
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 
@@ -14,12 +14,6 @@ def generate_launch_description():
     use_slam_arg = DeclareLaunchArgument(
         "use_slam",
         default_value="false"
-    )
-
-    use_simple_controller_arg = DeclareLaunchArgument(
-        "use_simple_controller",
-        default_value="False",
-        description="True: own C++ kinematics/odometry node (simple_controller). False: diff_drive_controller"
     )
 
     calibration_file_arg = DeclareLaunchArgument(
@@ -47,7 +41,7 @@ def generate_launch_description():
 
     map_name_arg = DeclareLaunchArgument(
         "map_name",
-        default_value="small_house",
+        default_value="arena",
         description="Map for AMCL, in bumperbot_mapping/maps/<map_name>/map.yaml"
     )
 
@@ -88,7 +82,6 @@ def generate_launch_description():
             "controller.launch.py"
         ),
         launch_arguments={
-            "use_simple_controller": LaunchConfiguration("use_simple_controller"),
             "calibration_file": LaunchConfiguration("calibration_file"),
             "use_ekf": LaunchConfiguration("use_ekf"),
             "use_sim_time": "False"
@@ -125,9 +118,7 @@ def generate_launch_description():
             "ekf.launch.py"
         ),
         launch_arguments={"use_sim_time": "False"}.items(),
-        condition=IfCondition(PythonExpression([
-            "'", LaunchConfiguration("use_ekf"), "'.lower() in ('true', '1') and '",
-            LaunchConfiguration("use_simple_controller"), "'.lower() not in ('true', '1')"])),
+        condition=IfCondition(LaunchConfiguration("use_ekf")),
     )
 
     localization = IncludeLaunchDescription(
@@ -161,7 +152,6 @@ def generate_launch_description():
     
     return LaunchDescription([
         use_slam_arg,
-        use_simple_controller_arg,
         calibration_file_arg,
         use_mock_hardware_arg,
         arduino_port_arg,

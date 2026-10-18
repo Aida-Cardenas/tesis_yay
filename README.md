@@ -16,14 +16,12 @@ tesis-gemelo-digital-wmr/          <- esta carpeta ES el workspace (colcon build
 │   ├── bumperbot_digital_twin  GEMELO DIGITAL (propio): puente bidireccional, calibración, anomalías,
 │   │                           red degradada, compensación de latencia, LiDAR, panel, experimentos,
 │   │                           navegación con vista previa, sintonización de ganancias
-│   ├── bumperbot_description   URDF/xacro, mallas, mundos de Gazebo, launch de simulación
-│   ├── bumperbot_controller    diff_drive_controller, cinemática propia (simple_controller), teleoperación, twist_mux
-│   ├── bumperbot_firmware      ros2_control hardware interface (serial), driver IMU MPU6050, sketches Arduino
+│   ├── bumperbot_description   URDF/xacro, mallas, el recinto de pruebas en Gazebo, launch de simulación
+│   ├── bumperbot_controller    diff_drive_controller, teleoperación, twist_mux
+│   ├── bumperbot_firmware      ros2_control hardware interface (serial), driver IMU MPU6050, firmware del Arduino
 │   ├── bumperbot_localization  EKF (robot_localization) y AMCL
 │   ├── bumperbot_mapping       slam_toolbox y mapas guardados
-│   ├── bumperbot_planning      planificadores globales Dijkstra y A* (plugins de Nav2)
-│   ├── bumperbot_motion        controladores PD y Pure Pursuit (plugins de Nav2)
-│   ├── bumperbot_navigation    configuración de Nav2 y behavior trees
+│   ├── bumperbot_navigation    configuración de Nav2 y su behavior tree
 │   ├── bumperbot_utils         safety_stop (parada de seguridad con LiDAR)
 │   ├── bumperbot_bringup       launch principales: simulated_robot / real_robot
 │   └── bumperbot_msgs          mensajes y servicio del gemelo digital
@@ -54,40 +52,33 @@ Recomendado: agregar `source ~/tesis_ws/install/setup.bash` al final de `~/.bash
 
 ## Uso en simulación (gemelo digital en Gazebo)
 
-**Mapeo con SLAM** en la casa:
+**Localización con AMCL + navegación** en el recinto de pruebas `arena`:
 
 ```bash
-ros2 launch bumperbot_bringup simulated_robot.launch.py use_slam:=true world_name:=small_house
+ros2 launch bumperbot_bringup simulated_robot.launch.py
 ```
 
-**Localización con AMCL + navegación** sobre un mapa ya guardado (el mundo y el mapa deben coincidir):
+En RViz: **Nav2 Goal** para enviar una meta (AMCL arranca en la marca de salida; si se pierde, **2D Pose Estimate**).
+
+**Mapeo con SLAM** en el mismo recinto:
 
 ```bash
-ros2 launch bumperbot_bringup simulated_robot.launch.py world_name:=small_house map_name:=small_house
+ros2 launch bumperbot_bringup simulated_robot.launch.py use_slam:=true
 ```
 
-En RViz: primero **2D Pose Estimate** (pose inicial para AMCL) y luego **Nav2 Goal** para enviar una meta.
-
-Mundos disponibles: `empty`, `small_house`, `small_warehouse`, `arena` (recinto rectangular de pruebas; su mapa también se llama `arena` y ambos se regeneran con `twin_calibrate arena`). Mapas: `small_house`, `small_warehouse`, `arena`.
-
-**Solo ver el modelo** (RViz, sin física):
-
-```bash
-ros2 launch bumperbot_description display.launch.py
-```
+El único mundo es `arena`, el recinto rectangular de pruebas que también se arma en el laboratorio. Su mundo y su mapa se regeneran juntos con `twin_calibrate arena` si el recinto real mide otra cosa.
 
 ### Argumentos de `simulated_robot.launch.py` / `real_robot.launch.py`
 
 | Argumento | Por defecto | Qué hace |
 |---|---|---|
 | `use_slam` | `false` | `true`: slam_toolbox (mapeo). `false`: map_server + AMCL |
-| `world_name` | `empty` | Mundo de Gazebo (solo simulación) |
-| `map_name` | `small_house` | Mapa para AMCL, en `bumperbot_mapping/maps/<map_name>/map.yaml` |
-| `use_simple_controller` | `False` | `True`: nodo propio de cinemática/odometría (`simple_controller`). `False`: `diff_drive_controller` |
+| `world_name` | `arena` | Mundo de Gazebo (solo simulación) |
+| `map_name` | `arena` | Mapa para AMCL, en `bumperbot_mapping/maps/<map_name>/map.yaml` |
 | `calibration_file` | (vacío) | YAML con la calibración de ruedas (`twin_calibrate wheels`) |
 | `use_ekf` | `true` | EKF (robot_localization) fusiona ruedas + IMU y publica `odom → base_footprint` |
 | `use_safety_stop` | `false` | Lanza `safety_stop` (frena/detiene si el LiDAR ve un obstáculo cerca) |
-| `use_rviz` / `gui` | `true` | Solo simulación: abrir RViz / la ventana de Gazebo |
+| `use_rviz` | `true` | Solo simulación: abrir RViz |
 | `use_mock_hardware` | `false` | Solo robot real: sin Arduino, ruedas simuladas por ros2_control (para probar) |
 | `bt_xml` | `simple_navigation_w_replanning_and_recovery.xml` | Behavior tree de Nav2 (ruta completa) |
 | `arduino_port` | `/dev/arduino` | Puerto serie del Arduino (solo robot real) |
@@ -113,7 +104,7 @@ Luego se usa con `map_name:=mi_mapa`.
 
 ## Uso con el robot real
 
-1. **Firmware.** Cargar `src/bumperbot_firmware/firmware/robot_control/robot_control.ino` en el Arduino con el Arduino IDE. Si los motores o encoders giran al revés, usar `robot_control_inverted/robot_control_inverted.ino`.
+1. **Firmware.** Cargar `src/bumperbot_firmware/firmware/robot_control/robot_control.ino` en el Arduino con el Arduino IDE. Si un motor gira al revés, se invierten sus dos cables en el L298N; si un encoder cuenta al revés, se intercambian sus fases A y B.
 2. **Reglas udev** (en la Raspberry Pi, una sola vez). Revisar los IDs con `lsusb` y ajustar el archivo si hace falta:
    ```bash
    sudo cp udev/90-bumperbot.rules /etc/udev/rules.d/
@@ -159,7 +150,7 @@ Detalles, métricas y experimentos en [`docs/GEMELO_DIGITAL.md`](docs/GEMELO_DIG
 
 ## Navegación
 
-Nav2 usa por defecto `SmacPlanner2D` y `RegulatedPurePursuitController`. Los plugins propios (`bumperbot_planning::DijkstraPlanner`, `AStarPlanner`, `bumperbot_motion::PDMotionPlanner`, `PurePursuit`) están comentados en `bumperbot_navigation/config/planner_server.yaml` y `controller_server.yaml`. Tienen errores conocidos del curso (ver [`docs/ORIGEN_DEL_CODIGO.md`](docs/ORIGEN_DEL_CODIGO.md#5-errores-del-código-del-curso-que-se-corrigieron-revisión-de-octubre-2026)), así que no conviene activarlos sin corregirlos.
+Nav2 usa `SmacPlanner2D` como planificador global y `RegulatedPurePursuitController` como controlador local, con el behavior tree `simple_navigation_w_replanning_and_recovery.xml` (replanifica y tiene maniobras de recuperación).
 
 ## Integración continua
 

@@ -2,7 +2,7 @@
 
 ## 1. Cómo se unificaron los tres repositorios
 
-Los tres cursos construyen **el mismo workspace** (`bumperbot_ws`) de forma incremental: cada módulo arranca con el código final del anterior y le agrega paquetes. Por eso, el workspace final de **Plan & Navigation** (rama `humble`, `Section9_Build_the_Robot`) ya contiene todos los archivos que aparecen en cualquier sección de los tres repos, con una sola excepción: `robot_control_inverted.ino`, que se copió de los otros dos.
+Los tres cursos construyen **el mismo workspace** (`bumperbot_ws`) de forma incremental: cada módulo arranca con el código final del anterior y le agrega paquetes. Por eso, el workspace final de **Plan & Navigation** (rama `humble`, `Section9_Build_the_Robot`) ya contiene todos los archivos que aparecen en cualquier sección de los tres repos, con una sola excepción: `robot_control_inverted.ino`, que se copió de los otros dos (y después se eliminó, ver la limpieza más abajo).
 
 Se verificó comparando cada archivo de cada sección de los tres repos contra el workspace final. Los archivos que existen en varias versiones quedaron en su versión más reciente (la de Plan & Navigation), salvo los ajustes listados en [`NOTICE`](../NOTICE).
 
@@ -24,10 +24,14 @@ El curso enseña cada concepto con una demo aislada y casi todo lo escribe dos v
 | Mensajes `Fibonacci`, `AddTwoInts`, `GetTransform` | Solo los usaban esas demos |
 | Versiones Python de `simple_controller`, `noisy_controller`, `kalman_filter`, `imu_republisher`, `odometry_motion_model`, `mapping_with_known_poses`, planificadores y controladores | Duplicados de la versión C++ o demos que reemplazan robot_localization, slam_toolbox y Nav2 |
 | `noisy_controller`, `kalman_filter`, `local_localization.launch.py`, `odometry_motion_model`, `mapping_with_known_poses` (C++) | Demos de teoría reemplazadas por los paquetes estándar que sí se usan (EKF de robot_localization, slam_toolbox, AMCL) |
-| Nodos sueltos de Dijkstra, A*, PD y Pure Pursuit | Se conservan como **plugins de Nav2** (misma lógica) |
+| Planificadores Dijkstra y A* y controladores PD y Pure Pursuit (paquetes `bumperbot_planning` y `bumperbot_motion`) | Nav2 usa SmacPlanner2D y RegulatedPurePursuit; los del curso no se usaban y además tenían errores (rutas incorrectas cuando la meta es inalcanzable, velocidad angular mal calculada, caídas por excepciones de TF) |
+| `simple_controller` (C++) | Cinemática y odometría propias del curso; el sistema usa `diff_drive_controller` de ros2_controllers |
+| `robot_control_inverted.ino` | Invertía lados y sentidos; con la interfaz que asigna las ruedas por nombre ya no hace falta |
+| Mundos `empty`, `small_house` y `small_warehouse`, sus mapas, modelos 3D y fotos | Demos del curso; las pruebas de la tesis usan solo el recinto `arena` |
+| `display.launch.py`, configuraciones de RViz sueltas y dos behavior trees sin usar | Demos del curso; el sistema usa la vista de Nav2 y un solo behavior tree |
 | Sketches de prueba del Arduino y `simple_serial_*` | Pruebas de la conexión serie; el firmware real es `robot_control` |
 
-Lo que queda: `simple_controller` y `twist_relay` (C++), la interfaz de hardware y el driver de la IMU, los plugins de Nav2 y todas las configuraciones y launch del sistema.
+Lo que queda es lo que se ejecuta: el modelo URDF y el recinto `arena`, `diff_drive_controller` con `twist_mux` y `twist_relay` (joystick), la interfaz de hardware y el firmware `robot_control.ino`, el driver de la IMU, el EKF, AMCL y slam_toolbox, Nav2 con su configuración, `safety_stop`, el gemelo digital y sus mensajes.
 
 ## 2. Qué archivo nació en qué sección del curso
 
@@ -81,7 +85,7 @@ Algunos de estos archivos se quitaron en la limpieza (ver arriba); la tabla se d
 | III.3.4 Comunicación bidireccional | `bumperbot_digital_twin` | Aporte propio (ver [`GEMELO_DIGITAL.md`](GEMELO_DIGITAL.md)) |
 | III.1.1 Fusión sensorial (EKF) | `bumperbot_localization/config/ekf_odom.yaml` | Integrado al sistema (ver punto 2) |
 | III.1.1 SLAM | `bumperbot_mapping` (`slam_toolbox`) | Listo |
-| III.1.1 Nav2 | `bumperbot_navigation`, `bumperbot_planning`, `bumperbot_motion` | Listo |
+| III.1.1 Nav2 | `bumperbot_navigation` | Listo |
 | Prueba 1 — URDF en Gazebo | `ros2 launch bumperbot_description gazebo.launch.py` | — |
 | Prueba 2 — Árbol TF | con el bringup corriendo: `ros2 run tf2_tools view_frames` | — |
 | Prueba 3 — Movimiento por comando | `ros2 topic pub -r 10 /key_vel geometry_msgs/msg/Twist "{linear: {x: 0.1}}"` y `ros2 topic echo /bumperbot_controller/odom` | — |
@@ -92,9 +96,9 @@ Algunos de estos archivos se quitaron en la limpieza (ver arriba); la tabla se d
 
 1. **Comunicación bidireccional (III.3.4, Prueba 5).** El curso lanza el robot real **o** el simulado. La capa que los conecta y sincroniza es el aporte propio de la tesis: paquete `bumperbot_digital_twin`, descrito en [`GEMELO_DIGITAL.md`](GEMELO_DIGITAL.md).
 2. **EKF.** En el curso el EKF era una demo aparte. Ahora está integrado al sistema completo y activo por defecto (`use_ekf:=true`): publica `/odometry/filtered` (no `/odom_filtered`) y la TF `odom → base_footprint` que usan SLAM, AMCL y Nav2.
-3. **"Nodos propios en C++ para cinemática y odometría".** Por defecto se usa `diff_drive_controller` de ros2_controllers. El nodo propio (C++) se usa con `use_simple_controller:=True`; en ese modo el EKF no se lanza porque esos nodos publican su propia TF.
+3. **"Nodos propios en C++ para cinemática y odometría".** El sistema usa `diff_drive_controller` de ros2_controllers, que calcula la cinemática y la odometría a partir de los encoders. El nodo propio del curso (`simple_controller`) se eliminó porque no se usaba. El texto de III.1.1 debe decir que se usó `diff_drive_controller` configurado con las medidas del prototipo.
 4. **Ruedas.** El modelo tiene 2 ruedas motrices + 2 ruedas locas (`caster_front_link`, `caster_rear_link`), es decir, tracción diferencial clásica.
-5. **Medidas del robot.** Radio de rueda 0,033 m y separación 0,17 m están en `bumperbot_controllers.yaml`, `controller.launch.py` y los `declare_parameter` de `simple_controller`. Las diferencias medidas en el robot real se corrigen sin tocar el URDF con `twin_calibrate wheels` (multiplicadores de `diff_drive_controller`). Coinciden con el diseño del prototipo; si alguna cambia, hay que actualizarla en todos esos lugares y en el URDF.
+5. **Medidas del robot.** Radio de rueda 0,033 m y separación 0,17 m están en `bumperbot_controllers.yaml` y en el URDF (`bumperbot.urdf.xacro`: posición de las ruedas y radio de su colisión). Las diferencias medidas en el robot real se corrigen sin tocar el URDF con `twin_calibrate wheels` (multiplicadores de `diff_drive_controller`). Coinciden con el diseño del prototipo; si alguna cambia, hay que actualizarla en los dos lugares.
 6. **Simulador.** El capítulo III.1 menciona `gazebo_ros_pkgs`, que es del Gazebo viejo (Classic). El sistema usa Gazebo Fortress con `ros_gz`.
 7. **Limitaciones (V.1).** El primer punto dice que no se abordó la navegación autónoma, pero el código sí incluye Nav2, planificación y evasión de obstáculos.
 
@@ -111,6 +115,6 @@ Algunos de estos archivos se quitaron en la limpieza (ver arriba); la tabla se d
 | `safety_stop` bajaba la velocidad del joystick cada vez que salía de la zona de peligro | `safety_stop.cpp` | Baja una sola vez por acercamiento y la sube al quedar libre |
 | La regla udev del Arduino no filtraba por `ttyUSB*` y otra línea cambiaba los permisos de todas las terminales | `udev/90-bumperbot.rules` | Reglas por `KERNEL` y sin la línea global |
 
-`robot_control_inverted.ino` no es una alternativa a la corrección de las ruedas: además de cambiar los lados invierte el sentido de motores y encoders. Con la interfaz corregida se usa `robot_control.ino`.
+`robot_control_inverted.ino` se eliminó: además de cambiar los lados invertía el sentido de motores y encoders, y con la interfaz corregida ya no hace falta. El único firmware es `robot_control.ino`.
 
-Los plugins del curso `DijkstraPlanner`, `AStarPlanner`, `PDMotionPlanner` y `PurePursuit` se conservan pero **no se usan** (Nav2 usa SmacPlanner2D y RegulatedPurePursuit). Tienen errores conocidos que no se corrigieron: Dijkstra y A* devuelven una ruta incorrecta si la meta es inalcanzable y no garantizan la ruta más corta; el PD no inicializa sus errores anteriores; PD y PurePursuit se caen con una `LookupException` de TF; PurePursuit calcula mal la velocidad angular. Si se quieren activar, hay que corregirlos antes.
+Los planificadores y controladores del curso (`DijkstraPlanner`, `AStarPlanner`, `PDMotionPlanner`, `PurePursuit`) tenían errores conocidos, pero no se corrigieron porque Nav2 nunca los usaba: se eliminaron del repositorio junto con el resto del código que el sistema no ejecuta (sección 1).

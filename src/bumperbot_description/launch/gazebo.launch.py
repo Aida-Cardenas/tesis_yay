@@ -1,5 +1,4 @@
 import os
-from os import pathsep
 from pathlib import Path
 from ament_index_python.packages import get_package_share_directory
 
@@ -22,7 +21,7 @@ def generate_launch_description():
         description="Absolute path to robot urdf file"
     )
 
-    world_name_arg = DeclareLaunchArgument(name="world_name", default_value="empty")
+    world_name_arg = DeclareLaunchArgument(name="world_name", default_value="arena")
 
     gui_arg = DeclareLaunchArgument(name="gui", default_value="true",
                                     description="false: Gazebo server only (headless)")
@@ -35,7 +34,6 @@ def generate_launch_description():
     )
 
     model_path = str(Path(bumperbot_description).parent.resolve())
-    model_path += pathsep + os.path.join(get_package_share_directory("bumperbot_description"), 'models')
 
     gazebo_resource_path = SetEnvironmentVariable(
         "GZ_SIM_RESOURCE_PATH",

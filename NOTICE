@@ -13,15 +13,17 @@ Copyright (c) Antonio Brandi.
 Modificaciones (Aida Cárdenas, 2026), detalladas en el historial de git:
   - Unificación en un solo workspace ROS 2 Humble tomando como base el workspace final
     de Plan-Navigation (rama humble), que ya contiene los paquetes de los otros dos.
-  - Se agrega el firmware robot_control_inverted.ino de los otros dos repositorios.
-  - bumperbot_bringup: argumentos use_safety_stop, use_simple_controller y calibration_file;
+  - bumperbot_bringup: argumentos use_safety_stop y calibration_file;
     use_sim_time=False explícito para el robot real.
   - Puerto del Arduino configurable (arduino_port, por defecto /dev/arduino) y reglas udev.
   - bumperbot_navigation: el behavior tree se carga desde el share del paquete
     (antes era una ruta absoluta de la máquina del autor) y argumento bt_xml.
   - Dependencias faltantes en varios package.xml.
-  - Se quitaron los paquetes de ejemplos, las versiones Python duplicadas y las demos
-    que el sistema no usa (detalle en docs/ORIGEN_DEL_CODIGO.md).
+  - Se quitaron los paquetes de ejemplos, las versiones Python duplicadas, las demos,
+    los planificadores y controladores propios del curso (bumperbot_planning,
+    bumperbot_motion), simple_controller, robot_control_inverted.ino y los mundos y
+    mapas de demostración: todo lo que el sistema no usa (detalle en
+    docs/ORIGEN_DEL_CODIGO.md).
   - Correcciones: ruedas por nombre de joint y parser robusto en la interfaz de hardware,
     escala del giroscopio del MPU6050, umbrales del map_saver, mundo y mapa coherentes en
     la simulación, un solo --param-file en el spawner, safety_stop y reglas udev

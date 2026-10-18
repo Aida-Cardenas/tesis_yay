@@ -4,7 +4,7 @@ project(bumperbot_mapping)
 find_package(ament_cmake REQUIRED)
 
 install(
-  DIRECTORY config launch maps rviz
+  DIRECTORY config launch maps
   DESTINATION share/${PROJECT_NAME}
 )
 
