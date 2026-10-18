@@ -88,7 +88,7 @@ Calcula `wheel_radius_multiplier` y `wheel_separation_multiplier` de `diff_drive
 | `latencia_alta` (puente) | RTT por encima de `latency_alert_ms` | Wi-Fi saturado |
 | `perdida_datos` (puente) | dejan de llegar datos de un robot | robot apagado, red caída |
 
-Los eventos (`bumperbot_msgs/TwinAnomaly`, con inicio y fin) se publican en `/digital_twin/events` en los dos dominios, aparecen en el panel y en RViz y quedan en `twin_<fecha>_<tag>_eventos.csv`. Con `lock_on_stall:=true` el detector además bloquea el robot (lock `safety_stop` de twist_mux) mientras dure un atasco.
+Los eventos (`bumperbot_msgs/TwinAnomaly`, con inicio y fin) se publican en `/digital_twin/events` en los dos dominios, aparecen en el panel y en RViz y quedan en `twin_<fecha>_<tag>_eventos.csv`. Con `lock_on_stall:=true` el detector además bloquea el robot (lock `safety_stop` de twist_mux) cuando detecta un atasco: lo mantiene bloqueado `lock_hold_time` (3 s), lo libera para reintentar y, si el atasco sigue `lock_retry_time` (1,5 s) después, lo vuelve a bloquear. Mientras está bloqueado, el detector se congela para no registrar un falso "fin del atasco".
 
 ## 5. Red degradada y compensación de latencia
 
@@ -234,6 +234,7 @@ Análisis de una corrida: `ros2 run bumperbot_digital_twin analyze_twin_log ~/tw
 | `twin_model`, `twin_model_file` | `false`, — | Aplicar el modelo identificado al gemelo |
 | `net_delay_ms`, `net_jitter_ms`, `net_loss` | 0 | Red emulada hacia el robot real |
 | `scan_compare`, `relay_real_scan` | `true` | Comparar y reenviar el LiDAR real |
+| `scan_sync_tolerance`, `scan_heading_tolerance` | 5 cm, 0.035 rad | Error máximo para comparar los LiDAR |
 | `latency_alert_ms` | 250 | Umbral de la anomalía `latencia_alta` |
 | `gains_file` | — | YAML con kx, ky, ktheta (`twin_tune`) |
 | `sync` | `true` | `false` = sincronización en pausa (la usa `twin_navigate`) |
@@ -306,4 +307,7 @@ La latencia de red en estas pruebas es local (menos de 2 ms); con la Raspberry P
 - La compensación supone que el retardo es aproximadamente simétrico (un sentido = RTT/2).
 - La vista previa supone que el gemelo y el robot real están localizados en el mismo mapa y en el mismo recinto; si el entorno real cambia (alguien pone una caja), el gemelo no lo sabe.
 - La sintonización es tan buena como el modelo identificado; conviene validarla siempre con un experimento (`G0T`, `L250RT`).
+- Los LiDAR solo se comparan cuando el error de posición es menor que `scan_sync_tolerance` (5 cm) y el de rumbo menor que `scan_heading_tolerance` (2°), para no medir desalineación en vez del modelo del sensor.
+- La figura *error vs latencia* solo usa experimentos que difieren únicamente en el retardo (mismo líder, con realimentación, ganancias por defecto, sin fallas inyectadas) y una sola métrica.
+- Si la calibración no encuentra corridas, no se instala ningún modelo y se omiten los experimentos que lo necesitan (`E7`, `TUNE`, `G0T`…).
 - Todo lo anterior está probado con robots simulados; los valores con el robot físico salen de correr `protocolo_real` y `twin_navigate`.

@@ -97,3 +97,20 @@ Algunos de estos archivos se quitaron en la limpieza (ver arriba); la tabla se d
 5. **Medidas del robot.** Radio de rueda 0,033 m y separación 0,17 m están en `bumperbot_controllers.yaml`, `controller.launch.py` y los `declare_parameter` de `simple_controller`. Las diferencias medidas en el robot real se corrigen sin tocar el URDF con `twin_calibrate wheels` (multiplicadores de `diff_drive_controller`). Coinciden con el diseño del prototipo; si alguna cambia, hay que actualizarla en todos esos lugares y en el URDF.
 6. **Simulador.** El capítulo III.1 menciona `gazebo_ros_pkgs`, que es del Gazebo viejo (Classic). El sistema usa Gazebo Fortress con `ros_gz`.
 7. **Limitaciones (V.1).** El primer punto dice que no se abordó la navegación autónoma, pero el código sí incluye Nav2, planificación y evasión de obstáculos.
+
+## 5. Errores del código del curso que se corrigieron (revisión de octubre 2026)
+
+| Problema | Dónde | Corrección |
+|---|---|---|
+| Ruedas izquierda y derecha invertidas: la interfaz suponía que el joint 0 era la rueda derecha, pero el URDF declara primero `wheel_left_joint` | `bumperbot_interface.cpp` | Las ruedas se buscan por nombre del joint (`wheel_right_joint`, `wheel_left_joint`) |
+| Una línea corrupta del Arduino (`r`, `rp`, `rpabc`) lanzaba una excepción y cerraba `ros2_control_node` | `bumperbot_interface.cpp` | Parser aparte (`serial_protocol.cpp`) que descarta los datos malos y avisa; con prueba gtest |
+| Giroscopio 8 veces más lento: se configuraba ±2000 °/s pero se dividía por el factor de ±250 °/s | `mpu6050_driver.py` | Factor 939,65 LSB/(rad/s), rango del acelerómetro explícito y covarianzas reales para el EKF |
+| Umbrales del map_saver escritos como conjunto de Python y no como diccionario (se ignoraban) | `slam.launch.py` | `{"free_thresh_default": 0.196, "occupied_thresh_default": 0.65}` |
+| `simulated_robot.launch.py` abría un mundo vacío y localizaba en otro mapa | `simulated_robot.launch.py` | Argumentos `world_name` y `map_name` con valores coherentes |
+| Con EKF y calibración, el spawner de Humble recibía dos `--param-file` | `controller.launch.py` | Se fusionan en un solo archivo |
+| `safety_stop` bajaba la velocidad del joystick cada vez que salía de la zona de peligro | `safety_stop.cpp` | Baja una sola vez por acercamiento y la sube al quedar libre |
+| La regla udev del Arduino no filtraba por `ttyUSB*` y otra línea cambiaba los permisos de todas las terminales | `udev/90-bumperbot.rules` | Reglas por `KERNEL` y sin la línea global |
+
+`robot_control_inverted.ino` no es una alternativa a la corrección de las ruedas: además de cambiar los lados invierte el sentido de motores y encoders. Con la interfaz corregida se usa `robot_control.ino`.
+
+Los plugins del curso `DijkstraPlanner`, `AStarPlanner`, `PDMotionPlanner` y `PurePursuit` se conservan pero **no se usan** (Nav2 usa SmacPlanner2D y RegulatedPurePursuit). Tienen errores conocidos que no se corrigieron: Dijkstra y A* devuelven una ruta incorrecta si la meta es inalcanzable y no garantizan la ruta más corta; el PD no inicializa sus errores anteriores; PD y PurePursuit se caen con una `LookupException` de TF; PurePursuit calcula mal la velocidad angular. Si se quieren activar, hay que corregirlos antes.

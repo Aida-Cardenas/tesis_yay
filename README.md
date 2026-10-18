@@ -159,7 +159,7 @@ Detalles, métricas y experimentos en [`docs/GEMELO_DIGITAL.md`](docs/GEMELO_DIG
 
 ## Navegación
 
-Nav2 usa por defecto `SmacPlanner2D` y `RegulatedPurePursuitController`. Los plugins propios (`bumperbot_planning::DijkstraPlanner`, `AStarPlanner`, `bumperbot_motion::PDMotionPlanner`, `PurePursuit`) están comentados en `bumperbot_navigation/config/planner_server.yaml` y `controller_server.yaml`; se activan descomentándolos.
+Nav2 usa por defecto `SmacPlanner2D` y `RegulatedPurePursuitController`. Los plugins propios (`bumperbot_planning::DijkstraPlanner`, `AStarPlanner`, `bumperbot_motion::PDMotionPlanner`, `PurePursuit`) están comentados en `bumperbot_navigation/config/planner_server.yaml` y `controller_server.yaml`. Tienen errores conocidos del curso (ver [`docs/ORIGEN_DEL_CODIGO.md`](docs/ORIGEN_DEL_CODIGO.md#5-errores-del-código-del-curso-que-se-corrigieron-revisión-de-octubre-2026)), así que no conviene activarlos sin corregirlos.
 
 ## Integración continua
 
