@@ -83,8 +83,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             "calibration_file": LaunchConfiguration("calibration_file"),
-            "use_ekf": LaunchConfiguration("use_ekf"),
-            "use_sim_time": "False"
+            "use_ekf": LaunchConfiguration("use_ekf")
         }.items(),
     )
     
@@ -141,13 +140,23 @@ def generate_launch_description():
         condition=IfCondition(use_slam)
     )
 
+    bt_xml_arg = DeclareLaunchArgument(
+        "bt_xml",
+        default_value=os.path.join(
+            get_package_share_directory("bumperbot_navigation"),
+            "behavior_tree",
+            "simple_navigation_w_replanning_and_recovery.xml"
+        ),
+        description="Full path to the Nav2 behavior tree"
+    )
+
     navigation = IncludeLaunchDescription(
         os.path.join(
             get_package_share_directory("bumperbot_navigation"),
             "launch",
             "navigation.launch.py"
         ),
-        launch_arguments={"use_sim_time": "False"}.items(),
+        launch_arguments={"use_sim_time": "False", "bt_xml": LaunchConfiguration("bt_xml")}.items(),
     )
     
     return LaunchDescription([
@@ -158,6 +167,7 @@ def generate_launch_description():
         use_ekf_arg,
         use_safety_stop_arg,
         map_name_arg,
+        bt_xml_arg,
         hardware_interface,
         laser_driver,
         controller,

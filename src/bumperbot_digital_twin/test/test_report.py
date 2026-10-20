@@ -67,10 +67,81 @@ def test_latency_series_keeps_only_comparable_experiments():
     assert [p[0] for p in s["series"][("real", "no")]] == [0.0, 100, 250]
 
 
-def test_latency_series_uses_one_metric():
+def test_latency_series_needs_the_protocol():
     from bumperbot_digital_twin.report import latency_series
-    table = {"A": _row(delay=0), "B": _row(delay=100), "C": _row(delay=250, rmse_real=float("nan"))}
-    assert latency_series(table)["metric"] == "rmse"
+    table = {"A": _row(delay=0), "B": _row(delay=100), "C": _row(delay=250)}
+    result = latency_series(table)
+    assert result["series"] == {} and "protocolo" in result["note"]
+
+
+def test_latency_series_always_uses_the_real_error_and_skips_runs_without_it():
+    from bumperbot_digital_twin.report import latency_series
+    protocol = {"experiments": [{"name": n, "net_delay_ms": d} for n, d in
+                                (("A", 0), ("B", 100), ("C", 250), ("D", 400))]}
+    table = {"A": _row(delay=0, rmse=0.01, rmse_real=0.02), "B": _row(delay=100, rmse=0.01, rmse_real=0.03),
+             "C": _row(delay=250, rmse=0.01, rmse_real=0.05), "D": _row(delay=400, rmse_real=float("nan"))}
+    result = latency_series(table, protocol)
+    assert result["metric"] == "rmse_real"
+    assert [(p[0], p[1]) for p in result["series"][("real", "no")]] == [(0, 0.02), (100, 0.03), (250, 0.05)]
+
+
+def test_latency_series_ignores_logs_outside_the_protocol():
+    from bumperbot_digital_twin.report import latency_series
+    protocol = {"experiments": [{"name": n, "net_delay_ms": d} for n, d in (("A", 0), ("B", 100), ("C", 250))]}
+    table = {"A": _row(delay=0), "B": _row(delay=100), "C": _row(delay=250),
+             "fin": _row(delay=0, rmse_real=0.9), "calibracion": _row(delay=0, rmse_real=0.9),
+             "N1": _row(delay=0, rmse_real=0.9)}
+    used = {e for pts in latency_series(table, protocol)["series"].values() for p in pts for e in p[2]}
+    assert used == {"A", "B", "C"}
+
+
+@pytest.mark.parametrize("name", ["protocolo_real", "protocolo_simulacion"])
+def test_shipped_protocols_give_a_clean_latency_figure(name):
+    import os
+    import yaml
+    from bumperbot_digital_twin.report import latency_series, protocol_steps
+    path = os.path.join(os.path.dirname(__file__), "..", "config", name + ".yaml")
+    protocol = yaml.safe_load(open(path))
+    table = {}
+    for exp, step in protocol_steps(protocol).items():
+        table[exp] = _row(leader=step.get("leader", "real"), fb="sí" if step.get("feedback", True) else "no",
+                          comp="sí" if step.get("compensation") else "no",
+                          model="sí" if step.get("twin_model") else "no",
+                          gains="0.3/1.0/0.3" if step.get("gains") == "tuned" else "1.5/6.0/3.0",
+                          delay=step.get("net_delay_ms", 0), rmse_real=0.02 + step.get("net_delay_ms", 0) / 1e4)
+    result = latency_series(table, protocol)
+    assert result["series"], name
+    steps = protocol_steps(protocol)
+    for (leader, comp), pts in result["series"].items():
+        for _, _, exps in pts:
+            for e in exps:
+                assert steps[e].get("pattern", protocol["defaults"].get("pattern")) == result["pattern"]
+                assert steps[e].get("gains") != "tuned" and not steps[e].get("twin_model")
+
+
+def test_comparisons_of_compensation_use_the_real_error():
+    import os
+    import yaml
+    for name in ("protocolo_real", "protocolo_simulacion", "protocolo_ci"):
+        path = os.path.join(os.path.dirname(__file__), "..", "config", name + ".yaml")
+        protocol = yaml.safe_load(open(path))
+        steps = {s["name"]: s for s in protocol["experiments"] if "name" in s}
+        for pair in protocol["comparisons"]:
+            a, b = steps[pair[0]], steps[pair[1]]
+            delayed = any(s.get("net_delay_ms", 0) > 0 for s in (a, b))
+            if a.get("compensation") != b.get("compensation") or delayed:
+                assert len(pair) > 2 and pair[2] == "rmse_real", (name, pair)
+
+
+def test_welch_ignores_nan_runs():
+    from bumperbot_digital_twin.report import welch_t
+    t, df, p = welch_t([0.10, 0.11, 0.12, float("nan")], [0.20, 0.21, 0.22])
+    assert p < 0.05
+
+
+def test_untagged_duplicate_log_is_not_an_experiment():
+    from bumperbot_digital_twin.report import experiment_of
+    assert experiment_of("/x/twin_20261001_101010-2.csv") == (None, None)
 
 
 def test_deduplicated_log_name_keeps_experiment():

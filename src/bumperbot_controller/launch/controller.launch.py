@@ -32,10 +32,10 @@ def merge_param_files(paths):
     for path in paths:
         with open(path) as f:
             deep_update(merged, yaml.safe_load(f) or {})
-    out = tempfile.NamedTemporaryFile("w", prefix="bumperbot_controller_", suffix=".yaml", delete=False)
-    yaml.safe_dump(merged, out)
-    out.close()
-    return out.name
+    path = os.path.join(tempfile.gettempdir(), f"bumperbot_controller_params_{os.getuid()}.yaml")
+    with open(path, "w") as out:
+        yaml.safe_dump(merged, out)
+    return path
 
 
 def wheel_controller(context, *args, **kwargs):
@@ -59,7 +59,6 @@ def wheel_controller(context, *args, **kwargs):
 
 def generate_launch_description():
     args = [
-        DeclareLaunchArgument("use_sim_time", default_value="True"),
         DeclareLaunchArgument(
             "use_ekf",
             default_value="False",

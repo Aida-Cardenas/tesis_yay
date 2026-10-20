@@ -51,13 +51,30 @@ def generate_launch_description():
         description="Map for AMCL, in bumperbot_mapping/maps/<map_name>/map.yaml (must match world_name)"
     )
 
+    bt_xml_arg = DeclareLaunchArgument(
+        "bt_xml",
+        default_value=os.path.join(
+            get_package_share_directory("bumperbot_navigation"),
+            "behavior_tree",
+            "simple_navigation_w_replanning_and_recovery.xml"
+        ),
+        description="Full path to the Nav2 behavior tree"
+    )
+
+    gui_arg = DeclareLaunchArgument(
+        "gui",
+        default_value="true",
+        description="false: Gazebo without its window (server only)"
+    )
+
     gazebo = IncludeLaunchDescription(
         os.path.join(
             get_package_share_directory("bumperbot_description"),
             "launch",
             "gazebo.launch.py"
         ),
-        launch_arguments={"world_name": LaunchConfiguration("world_name")}.items(),
+        launch_arguments={"world_name": LaunchConfiguration("world_name"),
+                          "gui": LaunchConfiguration("gui")}.items(),
     )
     
     controller = IncludeLaunchDescription(
@@ -126,6 +143,7 @@ def generate_launch_description():
             "launch",
             "navigation.launch.py"
         ),
+        launch_arguments={"bt_xml": LaunchConfiguration("bt_xml")}.items(),
     )
 
     rviz = Node(
@@ -150,6 +168,8 @@ def generate_launch_description():
         use_safety_stop_arg,
         world_name_arg,
         map_name_arg,
+        bt_xml_arg,
+        gui_arg,
         gazebo,
         controller,
         joystick,

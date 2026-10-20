@@ -7,6 +7,15 @@ PATTERNS = ("line", "line_back", "square", "circle", "rotate", "figure8")
 
 def build_segments(pattern, v, w, distance, radius, laps, pause):
     """Lista de (duración [s], v [m/s], ω [rad/s])."""
+    needs = {"line": ("v", "distance"), "line_back": ("v", "w", "distance"),
+             "square": ("v", "w", "distance"), "circle": ("v", "radius"),
+             "rotate": ("w",), "figure8": ("v", "radius")}
+    if pattern not in needs:
+        raise ValueError(f"pattern debe ser uno de {PATTERNS}")
+    values = {"v": v, "w": w, "distance": distance, "radius": radius}
+    for name in needs[pattern]:
+        if not values[name] > 0:
+            raise ValueError(f"el recorrido {pattern} necesita {name} mayor que 0 (vale {values[name]})")
     stop = [(pause, 0.0, 0.0)] if pause > 0 else []
     if pattern == "line":
         one = [(distance / v, v, 0.0)]

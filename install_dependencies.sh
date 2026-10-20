@@ -31,11 +31,21 @@ if [ "$MODE" = "robot" ]; then
   echo ">> Modo robot: se omiten $SKIP_KEYS"
 fi
 
-rosdep install --from-paths "$WS_DIR/src" --ignore-src --rosdistro humble -r -y \
+rosdep install --from-paths "$WS_DIR/src" --ignore-src --rosdistro humble -y \
   ${SKIP_KEYS:+--skip-keys "$SKIP_KEYS"}
 
 # Teleoperación por teclado (opcional, útil si no tienes joystick)
 sudo apt-get install -y ros-humble-key-teleop || true
+
+if [ "$MODE" = "robot" ]; then
+  # Las reglas udev dan el Arduino y el LiDAR al grupo dialout; la IMU usa i2c.
+  for g in dialout i2c; do
+    if getent group "$g" > /dev/null; then
+      sudo usermod -aG "$g" "$USER"
+    fi
+  done
+  echo ">> $USER quedó en los grupos dialout e i2c: cierra la sesión y vuelve a entrar para que tome efecto"
+fi
 
 echo
 echo "Listo. Ahora compila con:"

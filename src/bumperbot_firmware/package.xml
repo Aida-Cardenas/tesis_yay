@@ -18,6 +18,12 @@
   <depend>pluginlib</depend>
   <depend>libserial-dev</depend>
   <exec_depend>python3-smbus</exec_depend>
+  <exec_depend>bumperbot_description</exec_depend>
+  <exec_depend>bumperbot_controller</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>ros2launch</exec_depend>
 
   <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_lint_auto</test_depend>

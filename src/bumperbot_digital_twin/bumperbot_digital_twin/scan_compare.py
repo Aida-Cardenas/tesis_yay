@@ -162,3 +162,19 @@ def write_map(directory, image, origin, resolution=0.05):
         f.write(f"image: map.pgm\nmode: trinary\nresolution: {resolution:.6f}\n"
                 f"origin: [{origin[0]:.6f}, {origin[1]:.6f}, 0.000000]\n"
                 "negate: 0\noccupied_thresh: 0.65\nfree_thresh: 0.196\n")
+
+
+def scan_gate(pos_err, heading_err, speeds, p):
+    """Motivo para NO comparar los LiDAR en este instante, o None si se puede.
+
+    Los dos barridos solo son comparables si los robots están casi en la misma
+    pose (posición y rumbo) y casi quietos. `speeds` es una lista de (v, ω) de
+    cada robot y `p` los parámetros del puente.
+    """
+    if not math.isfinite(pos_err) or pos_err > p["scan_sync_tolerance"]:
+        return "posición"
+    if not math.isfinite(heading_err) or abs(heading_err) > p["scan_heading_tolerance"]:
+        return "rumbo"
+    if any(abs(v) > p["scan_max_linear"] or abs(w) > p["scan_max_angular"] for v, w in speeds):
+        return "movimiento"
+    return None

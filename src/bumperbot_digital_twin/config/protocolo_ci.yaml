@@ -24,6 +24,6 @@ experiments:
 
 comparisons:
   - [M, MC]
-  - [D, DC]
-  - [R, RC]
-  - [R, RT]
+  - [D, DC, rmse_real]
+  - [R, RC, rmse_real]
+  - [R, RT, rmse_real]

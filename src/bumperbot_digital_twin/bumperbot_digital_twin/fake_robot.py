@@ -39,6 +39,11 @@ def quaternion_z(theta):
     return math.sin(theta / 2.0), math.cos(theta / 2.0)
 
 
+def require_positive(**values):
+    for name, value in values.items():
+        if not value > 0:
+            raise ValueError(f"{name} debe ser mayor que 0 (vale {value})")
+
 class FakeRobot(Node):
     def __init__(self):
         super().__init__("fake_robot")
@@ -57,6 +62,7 @@ class FakeRobot(Node):
         self.arena = [float(x) for x in dp("arena", [0.0], ParameterDescriptor(dynamic_typing=True)).value]
         self.scan_noise = dp("scan_noise", 0.0).value
         self.scan_rate = dp("scan_rate", 5.0).value
+        require_positive(rate=self.rate, scan_rate=self.scan_rate)
         self.laser_yaw = dp("laser_yaw", 3.14).value
         self.rng = random.Random(dp("seed", 1).value)
 

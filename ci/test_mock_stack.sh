@@ -23,19 +23,30 @@ check() {
 
 printf 'bumperbot_controller:\n  ros__parameters:\n    wheel_separation_multiplier: 1.02\n' > /tmp/calibracion_ci.yaml
 
+# Sin LiDAR (mock hardware) AMCL nunca publica map -> odom, y sin esa transformada
+# el costmap global de Nav2 no termina de activarse. Se publica fija para probar
+# que Nav2 queda de verdad en "active".
+setsid ros2 run tf2_ros static_transform_publisher --frame-id map --child-frame-id odom > /tmp/static_map_odom.log 2>&1 &
+TFPID=$!
+
 setsid ros2 launch bumperbot_digital_twin real_side.launch.py use_mock_hardware:=true use_ekf:=true real_domain:=10 \
   calibration_file:=/tmp/calibracion_ci.yaml \
   > /tmp/mock_stack.log 2>&1 &
 PID=$!
 sleep 30
 
-check "controladores activos" bash -c "ros2 control list_controllers | grep -E 'bumperbot_controller.*active' && ros2 control list_controllers | grep -E 'joint_state_broadcaster.*active'"
+check "controladores activos" bash -c "ros2 control list_controllers | grep bumperbot_controller | grep -w active && ros2 control list_controllers | grep joint_state_broadcaster | grep -w active"
 check "enable_odom_tf false con EKF" bash -c "ros2 param get /bumperbot_controller enable_odom_tf | grep -i false"
 check "calibración aplicada junto con el EKF" bash -c "ros2 param get /bumperbot_controller wheel_separation_multiplier | grep 1.02"
 check "EKF publica odometry filtered" bash -c "ros2 topic echo --once /odometry/filtered > /dev/null"
 check "TF odom a base_footprint" bash -c "timeout 8 ros2 run tf2_ros tf2_echo odom base_footprint 2>&1 | grep -m1 Translation"
-check "Nav2 controller_server activo" bash -c "ros2 lifecycle get /controller_server | grep -i active"
-check "Nav2 bt_navigator activo" bash -c "ros2 lifecycle get /bt_navigator | grep -i active"
+for _ in $(seq 1 20); do
+  timeout 10 ros2 lifecycle get /bt_navigator 2>/dev/null | grep -qx 'active \[3\]' && break
+  sleep 3
+done
+for n in map_server amcl planner_server controller_server smoother_server behavior_server bt_navigator; do
+  check "Nav2 $n en active [3]" bash -c "ros2 lifecycle get /$n | grep -qx 'active \[3\]'"
+done
 check "detector de anomalías activo" bash -c "ros2 node list | grep anomaly_detector"
 check "twist_mux con entrada twin_vel" bash -c "ros2 param get /twist_mux topics.digital_twin.topic | grep twin_vel"
 timeout 6 ros2 topic pub -r 10 /key_vel geometry_msgs/msg/Twist "{linear: {x: 0.2}}" > /dev/null 2>&1
@@ -69,6 +80,7 @@ else
 fi
 
 stop_group $PID
+stop_group $TFPID
 if [ $FAIL -eq 0 ]; then
   annotate notice "Robot real con mock hardware" "$RESULTS"
 else

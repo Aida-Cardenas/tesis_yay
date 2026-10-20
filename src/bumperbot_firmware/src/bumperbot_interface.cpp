@@ -72,8 +72,6 @@ CallbackReturn BumperbotInterface::on_init(const hardware_interface::HardwareInf
   velocity_commands_.assign(info_.joints.size(), 0.0);
   position_states_.assign(info_.joints.size(), 0.0);
   velocity_states_.assign(info_.joints.size(), 0.0);
-  last_run_ = rclcpp::Clock().now();
-
   return CallbackReturn::SUCCESS;
 }
 
@@ -118,6 +116,7 @@ CallbackReturn BumperbotInterface::on_activate(const rclcpp_lifecycle::State &)
   std::fill(velocity_commands_.begin(), velocity_commands_.end(), 0.0);
   std::fill(position_states_.begin(), position_states_.end(), 0.0);
   std::fill(velocity_states_.begin(), velocity_states_.end(), 0.0);
+  rx_buffer_.clear();
 
   try
   {
@@ -170,22 +169,28 @@ CallbackReturn BumperbotInterface::on_deactivate(const rclcpp_lifecycle::State &
 
 
 hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
-                                                          const rclcpp::Duration &)
+                                                          const rclcpp::Duration & period)
 {
-  if(arduino_.IsDataAvailable())
+  // Only the bytes already received are read, so a line cut in half never
+  // blocks the control loop: the rest is completed on a later cycle.
+  try
   {
-    auto dt = (rclcpp::Clock().now() - last_run_).seconds();
-    std::string message;
-    try
+    while (arduino_.IsDataAvailable())
     {
-      arduino_.ReadLine(message);
+      char byte = 0;
+      arduino_.ReadByte(byte, 1);
+      rx_buffer_.push_back(byte);
     }
-    catch (...)
-    {
-      RCLCPP_WARN_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 2000,
-                           "Could not read a line from %s", port_.c_str());
-      return hardware_interface::return_type::OK;
-    }
+  }
+  catch (...)
+  {
+    RCLCPP_WARN_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 2000,
+                         "Could not read from %s", port_.c_str());
+  }
+
+  std::string message;
+  if (take_last_line(rx_buffer_, message))
+  {
     const WheelReading reading = parse_wheel_message(message);
     if (reading.rejected > 0)
     {
@@ -195,14 +200,23 @@ hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
     if (reading.has_right)
     {
       velocity_states_.at(right_index_) = reading.right;
-      position_states_.at(right_index_) += reading.right * dt;
     }
     if (reading.has_left)
     {
       velocity_states_.at(left_index_) = reading.left;
-      position_states_.at(left_index_) += reading.left * dt;
     }
-    last_run_ = rclcpp::Clock().now();
+  }
+
+  // The Arduino reports every 100 ms and the loop runs faster, so the last
+  // measured speed is held and integrated with the controller period (not the
+  // wall clock, which can jump).
+  const double dt = period.seconds();
+  if (dt > 0.0 && dt < 1.0)
+  {
+    for (size_t i = 0; i < position_states_.size(); ++i)
+    {
+      position_states_[i] += velocity_states_[i] * dt;
+    }
   }
   return hardware_interface::return_type::OK;
 }

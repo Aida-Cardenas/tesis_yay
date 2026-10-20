@@ -52,15 +52,22 @@ def protocol_steps(protocol):
 def latency_series(table, protocol=None):
     """Curvas de error contra retardo, usando solo experimentos comparables.
 
-    Se toman los experimentos con corrección, sin gemelo calibrado, con las ganancias por
-    defecto, sin fallas provocadas y con el mismo recorrido; se separan por líder y por
-    compensación. Así cada curva varía solo en el retardo. Se usa una sola métrica para
-    todos los puntos: el error real si está en todos, si no el del puente.
+    Necesita el protocolo: sin él no se sabe qué recorrido hizo cada experimento y se
+    mezclarían líneas, cuadrados y círculos. Se toman solo los experimentos del
+    protocolo con corrección, sin gemelo calibrado, con las ganancias por defecto, sin
+    fallas provocadas y con el mismo recorrido; se separan por líder y por compensación.
+    La métrica es siempre el error real (rmse_real): el error del puente se mide contra
+    las poses compensadas y favorecería a la compensación por construcción.
     """
+    empty = {"metric": "rmse_real", "pattern": "", "series": {}}
     steps = protocol_steps(protocol)
+    if not steps:
+        return dict(empty, note="sin protocolo (-p) no se puede saber qué recorrido hizo cada experimento")
     eligible = []
     for exp, row in table.items():
-        step = steps.get(exp, {})
+        step = steps.get(exp)
+        if step is None:
+            continue
         if row["realimentacion"] != "sí" or row["modelo"] != "no":
             continue
         if row.get("ganancias", "—") not in ("—", DEFAULT_GAINS_TEXT) or step.get("gains") == "tuned":
@@ -71,20 +78,19 @@ def latency_series(table, protocol=None):
             continue
         if "," in str(row["lider"]):
             continue
-        eligible.append((exp, row, step.get("pattern", "square" if steps else "")))
+        if not math.isfinite(row["rmse_real"][0]):
+            continue
+        eligible.append((exp, row, step.get("pattern", "square")))
     delayed_patterns = [pat for _, row, pat in eligible if row["red_ms"] > 0]
     if not delayed_patterns:
-        return {"metric": "rmse", "pattern": "", "series": {}}
+        return empty
     pattern = max(set(delayed_patterns), key=delayed_patterns.count)
-    chosen = [(exp, row) for exp, row, pat in eligible if pat == pattern]
-    use_real = all(math.isfinite(row["rmse_real"][0]) for _, row in chosen)
-    key = "rmse_real" if use_real else "rmse"
     grouped = {}
-    for exp, row in chosen:
-        value = row[key][0]
-        if not math.isfinite(value):
+    for exp, row, pat in eligible:
+        if pat != pattern:
             continue
-        grouped.setdefault((row["lider"], row["compensacion"]), {}).setdefault(row["red_ms"], []).append((value, exp))
+        grouped.setdefault((row["lider"], row["compensacion"]), {}).setdefault(row["red_ms"], []).append(
+            (row["rmse_real"][0], exp))
     series = {}
     for k, by_delay in grouped.items():
         pts = [(d, float(np.mean([v for v, _ in vals])), [e for _, e in vals]) for d, vals in sorted(by_delay.items())]
@@ -92,12 +98,13 @@ def latency_series(table, protocol=None):
             series[k] = pts
     if len({p[0] for pts in series.values() for p in pts}) < 3:
         series = {}
-    return {"metric": key, "pattern": pattern, "series": series}
+    return {"metric": "rmse_real", "pattern": pattern, "series": series}
 
 
 def welch_t(a, b):
     """Prueba t de Welch de dos colas. Devuelve (t, gl, p)."""
     a, b = np.asarray(a, float), np.asarray(b, float)
+    a, b = a[np.isfinite(a)], b[np.isfinite(b)]
     if a.size < 2 or b.size < 2:
         return math.nan, math.nan, math.nan
     va, vb = a.var(ddof=1) / a.size, b.var(ddof=1) / b.size
@@ -252,6 +259,8 @@ def build_report(csv_paths, out_dir, protocol=None, plots=True):
         lines += ["", "## Error en función de la latencia", "",
                   f"Solo experimentos que difieren únicamente en el retardo ({used}); métrica: "
                   f"{METRICS[sweep['metric']][0]}.", "", "![Error vs latencia](error_vs_latencia.png)"]
+    elif sweep.get("note"):
+        lines += ["", f"No se dibuja el error en función de la latencia: {sweep['note']}."]
 
     anomalies = [(exp, row["anomalias"]) for exp, row in table.items() if row["anomalias"]]
     if anomalies:
@@ -266,6 +275,18 @@ def build_report(csv_paths, out_dir, protocol=None, plots=True):
         json.dump({"experimentos": table, "comparaciones": results_cmp,
                    "corridas": {k: v for k, v in groups.items()}}, f, indent=2, ensure_ascii=False, default=str)
     return report_md, table, results_cmp
+
+
+def resolve_protocol_path(name):
+    """Acepta una ruta a un YAML o el nombre de un protocolo incluido (protocolo_real)."""
+    if os.path.isfile(name):
+        return name
+    from ament_index_python.packages import get_package_share_directory
+    share = get_package_share_directory("bumperbot_digital_twin")
+    candidate = os.path.join(share, "config", name if name.endswith(".yaml") else name + ".yaml")
+    if os.path.isfile(candidate):
+        return candidate
+    raise FileNotFoundError(f"No encuentro el protocolo {name}")
 
 
 def main(argv=None):
@@ -285,8 +306,11 @@ def main(argv=None):
     protocol = None
     if args.protocol:
         import yaml
-        with open(args.protocol) as f:
+        with open(resolve_protocol_path(args.protocol)) as f:
             protocol = yaml.safe_load(f)
+    else:
+        print("Aviso: sin -p no se dibuja la figura de error contra latencia ni se hacen las comparaciones "
+              "del protocolo. Ejemplo: twin_report ~/twin_logs -p protocolo_real")
     report_md, _, _ = build_report(paths, args.out, protocol, plots=not args.no_plots)
     print(report_md)
     print(f"Informe en {os.path.abspath(os.path.join(args.out, 'informe.md'))}")

@@ -27,11 +27,17 @@ from bumperbot_digital_twin.anomaly import AnomalyDetector, DetectorConfig, Stal
 from bumperbot_digital_twin.dynamics import NOMINAL_MODEL, TwinModel
 
 
+def require_positive(**values):
+    for name, value in values.items():
+        if not value > 0:
+            raise ValueError(f"{name} debe ser mayor que 0 (vale {value})")
+
 class AnomalyDetectorNode(Node):
     def __init__(self):
         super().__init__("anomaly_detector")
         model_file = os.path.expanduser(self.declare_parameter("model_file", "").value)
         self.rate = self.declare_parameter("rate", 50.0).value
+        require_positive(rate=self.rate)
         self.cmd_timeout = self.declare_parameter("cmd_timeout", 0.3).value
         self.state_timeout = self.declare_parameter("state_timeout", 0.5).value
         self.use_imu = self.declare_parameter("use_imu", True).value
@@ -88,13 +94,9 @@ class AnomalyDetectorNode(Node):
 
     def _step(self):
         now = time.monotonic()
-        if self.odom_rx is None or now - self.odom_rx > self.state_timeout:
-            return
-        cmd = self.cmd if self.cmd_rx is not None and now - self.cmd_rx < self.cmd_timeout else (0.0, 0.0)
-        imu = None
-        if self.use_imu and self.imu_rx is not None and now - self.imu_rx < self.state_timeout:
-            imu = self.imu_w
         if self.lock_on_stall:
+            # Before the odometry check, so a lock is released on time even if
+            # the odometry stops arriving while it is held.
             action = self.stall_lock.update(now, "atasco" in self.detector.active)
             if action:
                 self.lock_pub.publish(Bool(data=action == "lock"))
@@ -102,6 +104,12 @@ class AnomalyDetectorNode(Node):
                                        else "Bloqueo liberado: el robot puede volver a intentarlo")
             if self.stall_lock.locked:
                 return
+        if self.odom_rx is None or now - self.odom_rx > self.state_timeout:
+            return
+        cmd = self.cmd if self.cmd_rx is not None and now - self.cmd_rx < self.cmd_timeout else (0.0, 0.0)
+        imu = None
+        if self.use_imu and self.imu_rx is not None and now - self.imu_rx < self.state_timeout:
+            imu = self.imu_w
         for ev in self.detector.update(now, cmd[0], cmd[1], self.meas[0], self.meas[1], imu):
             msg = TwinAnomaly()
             t = time.time()

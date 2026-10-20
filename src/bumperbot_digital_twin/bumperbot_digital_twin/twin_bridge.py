@@ -71,7 +71,7 @@ from bumperbot_digital_twin.geometry import (
 )
 from bumperbot_digital_twin.netem import NetworkEmulator
 from bumperbot_digital_twin.ros_util import SpinThread, shutdown_all
-from bumperbot_digital_twin.scan_compare import bin_scan, compare_scans
+from bumperbot_digital_twin.scan_compare import bin_scan, compare_scans, scan_gate
 from bumperbot_digital_twin.tuning import load_gains_file
 
 SIDES = ("real", "twin")
@@ -332,6 +332,12 @@ class TwinBridge:
         for key in ("rate", "ping_rate", "scan_compare_rate"):
             if not p[key] > 0:
                 raise ValueError(f"{key} debe ser mayor que 0 (vale {p[key]})")
+        if p["feedforward_source"] not in ("cmd", "odom"):
+            raise ValueError("feedforward_source debe ser 'cmd' u 'odom'")
+        if p["feedforward_source"] == "odom":
+            node.get_logger().warn(
+                "feedforward_source: odom. Sirve para seguir al líder, pero los registros de esta sesión no "
+                "sirven para twin_calibrate dynamics (la entrada sería la misma velocidad medida)")
         return p
 
     def _declare_mirror_parameters(self, node):
@@ -424,7 +430,7 @@ class TwinBridge:
         base = os.path.join(log_dir, f"twin_{stamp}{tag}")
         n = 2
         while os.path.exists(base + ".csv"):
-            base = os.path.join(log_dir, f"twin_{stamp}{tag}{'-' if tag else '_'}{n}")
+            base = os.path.join(log_dir, f"twin_{stamp}{tag}-{n}")
             n += 1
         self.csv_path = base + ".csv"
         self.csv_file = open(self.csv_path, "w", newline="")
@@ -535,11 +541,7 @@ class TwinBridge:
         r, t = self.sides["real"].state, self.sides["twin"].state
         if r.scan is None or t.scan is None or now - r.scan_rx > 0.5 or now - t.scan_rx > 0.5:
             return
-        if not math.isfinite(pos_err) or pos_err > self.p["scan_sync_tolerance"]:
-            return
-        if not math.isfinite(heading_err) or abs(heading_err) > self.p["scan_heading_tolerance"]:
-            return
-        if any(abs(s.v) > self.p["scan_max_linear"] or abs(s.w) > self.p["scan_max_angular"] for s in (r, t)):
+        if scan_gate(pos_err, heading_err, [(s.v, s.w) for s in (r, t)], self.p) is not None:
             return
         self.last_scan_cmp = now
         res = compare_scans(r.scan, t.scan)
@@ -632,6 +634,8 @@ class TwinBridge:
                 notes.append("ganancias=" + " ".join(f"{k}={v:.2f}" for k, v in gains.items()))
             if request.pause_sync and self.p["sync"]:
                 self.p["sync"] = False
+                for name, side in self.sides.items():
+                    self.send_to(name, side.follow_pub, Twist())
                 notes.append("sincronización en pausa")
             if request.resume_sync and not self.p["sync"]:
                 self.p["sync"] = True
@@ -652,10 +656,14 @@ class TwinBridge:
             if request.align:
                 ok = self.align()
                 notes.append("alineado" if ok else "sin alinear (falta odometría)")
+            if request.close_log and not request.new_log and self.csv_file is not None:
+                closed = os.path.basename(self.csv_path)
+                self._close_log()
+                notes.append(f"registro cerrado={closed}")
             if request.new_log and self.p["log_enabled"]:
                 self._new_log(request.log_tag or self.p["log_tag"])
                 notes.append(f"registro={os.path.basename(self.csv_path)}")
-            response.log_path = self.csv_path
+            response.log_path = self.csv_path or ""
         response.success = True
         response.message = ", ".join(notes) or "sin cambios"
         self.main.get_logger().info(f"Configuración: {response.message}")

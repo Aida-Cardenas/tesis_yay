@@ -71,3 +71,13 @@ def test_arena_cli_writes_world_and_map(tmp_path):
     assert cell(2.02, 0.0) == 0
     assert cell(-0.52, 0.0) == 0
     assert cell(0.5, 1.02) == 0
+
+
+def test_calibration_refuses_logs_recorded_with_odom_feedforward():
+    import numpy as np
+    import pytest
+    from bumperbot_digital_twin.calibrate import fit_channel
+    t = np.arange(0, 10, 0.05)
+    v = np.where(t > 2, 0.15, 0.0)
+    with pytest.raises(ValueError, match="feedforward_source"):
+        fit_channel([(t, v, v.copy())], 0.5)

@@ -75,6 +75,7 @@
         <always_on>true</always_on>
         <update_rate>100</update_rate>
         <gz_frame_id>imu_link</gz_frame_id>
+        <ignition_frame_id>imu_link</ignition_frame_id>
         <topic>imu</topic>
         <imu>
           <angular_velocity>
@@ -129,6 +130,7 @@
       <topic>scan</topic>
       <update_rate>5</update_rate>
       <gz_frame_id>laser_link</gz_frame_id>
+      <ignition_frame_id>laser_link</ignition_frame_id>
       <lidar>
         <scan>
           <horizontal>

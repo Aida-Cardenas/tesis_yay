@@ -45,6 +45,10 @@ def fit_channel(chunks, max_delay):
     """Ajusta un modelo con todas las corridas, separadas por huecos para no mezclar dinámicas."""
     if not chunks:
         raise ValueError("No hay filas con líder real en los registros")
+    if all(np.allclose(u, y, atol=1e-6) for _, u, y in chunks):
+        raise ValueError("La entrada registrada es igual a la velocidad medida del robot: el puente corría con "
+                         "feedforward_source: odom, que no sirve para identificar la dinámica (daría K = 1, "
+                         "τ = 0). Repite la corrida con feedforward_source: cmd")
     offset = 0.0
     T, U, Y = [], [], []
     for t, u, y in chunks:
@@ -73,7 +77,7 @@ def plot_fit(model, data, out_png):
         ax.plot(t, simulate(m, t, u), color="#1f77b4", lw=1.2, ls="--", label="Modelo identificado")
         unit = "m/s" if name == "linear" else "rad/s"
         ax.set_ylabel(f"{'Lineal' if name == 'linear' else 'Angular'} [{unit}]")
-        ax.set_title(f"K={m.gain:.3f}  τ={m.tau:.3f} s  L={m.delay:.3f} s  R²={m.r2:.3f}", fontsize=10)
+        ax.set_title(f"K={m.gain:.3f}  τ={m.tau:.3f} s  L={m.delay:.3f} s  R² de la respuesta simulada={m.r2:.3f}", fontsize=10)
         ax.grid(alpha=0.3)
     axes[0].legend(loc="upper right", fontsize=8)
     axes[-1].set_xlabel("Tiempo [s]")
@@ -95,7 +99,7 @@ def cmd_dynamics(args):
         m.samples = int(len(t))
         setattr(model, name, m)
         data[name] = (m, t, u, y)
-        print(f"{name:8s} K={m.gain:.3f}  τ={m.tau:.3f} s  L={m.delay:.3f} s  R²={m.r2:.3f}  "
+        print(f"{name:8s} K={m.gain:.3f}  τ={m.tau:.3f} s  L={m.delay:.3f} s  R² (respuesta simulada)={m.r2:.3f}  R² un paso={m.r2_step:.3f}  "
               f"RMSE={fit_error(m, t, u, y):.4f}")
     model.save(args.output)
     print(f"Modelo guardado en {args.output}")

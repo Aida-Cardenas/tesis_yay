@@ -59,3 +59,37 @@ def test_wheel_calibration():
     assert wheel_calibration(1.0, 1.0)["wheel_separation_multiplier"] == 1.0
     with pytest.raises(ValueError):
         wheel_calibration(0.0, 1.0)
+
+
+@pytest.mark.parametrize("delay", [0.0, 0.05, 0.1, 0.3])
+def test_fit_recovers_the_filter_delay_exactly(delay):
+    t = np.arange(0, 40, 0.05)
+    u = excitation(t)
+    y = simulate(FirstOrderModel(0.85, 0.3, delay), t, u)
+    m = fit_first_order(t, u, y)
+    assert m.delay == pytest.approx(delay, abs=1e-6)
+    assert m.gain == pytest.approx(0.85, rel=1e-3)
+    assert m.tau == pytest.approx(0.3, rel=1e-3)
+
+
+def test_filter_matches_discrete_model():
+    model = FirstOrderModel(0.8, 0.25, 0.1)
+    dt = 0.05
+    t = np.arange(0, 10, dt)
+    u = excitation(t)
+    y = simulate(model, t, u)
+    a, b = model.discrete(dt)
+    d = int(round(model.delay / dt))
+    for k in range(d + 1, len(t) - 1):
+        assert y[k + 1] == pytest.approx(a * y[k] + b * u[k - d], abs=1e-9)
+
+
+def test_simulated_r2_is_stricter_than_one_step_r2():
+    t = np.arange(0, 40, 0.05)
+    u = excitation(t)
+    y = simulate(FirstOrderModel(0.8, 0.3, 0.1), t, u)
+    wrong = FirstOrderModel(1.0, 0.3, 0.1)
+    from bumperbot_digital_twin.dynamics import simulated_r2
+    assert simulated_r2(wrong, t, u, y) < 0.95
+    m = fit_first_order(t, u, y)
+    assert m.r2 == pytest.approx(1.0, abs=1e-6) and m.r2_step == pytest.approx(1.0, abs=1e-6)

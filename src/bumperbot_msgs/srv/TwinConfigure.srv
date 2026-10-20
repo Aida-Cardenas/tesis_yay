@@ -16,6 +16,8 @@ bool align
 # Cerrar el registro actual y abrir uno nuevo con esta etiqueta
 bool new_log
 string log_tag
+# Cerrar el registro actual sin abrir otro (fin de una corrida)
+bool close_log
 # Cargar otro modelo dinámico para el gemelo (twin_calibrate dynamics). "" sin cambio.
 string twin_model_file
 # Pausar o reanudar la sincronización (en pausa el puente no manda comandos a ningún robot)

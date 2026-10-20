@@ -5,6 +5,7 @@
 using bumperbot_firmware::find_wheel_index;
 using bumperbot_firmware::format_wheel_command;
 using bumperbot_firmware::parse_wheel_message;
+using bumperbot_firmware::take_last_line;
 
 TEST(SerialProtocol, ParsesBothWheels)
 {
@@ -64,4 +65,39 @@ TEST(SerialProtocol, WheelsAreFoundByNameNotByPosition)
   std::vector<std::string> other_names = {"left_wheel", "right_wheel"};
   EXPECT_EQ(find_wheel_index(other_names, "right"), 1);
   EXPECT_EQ(find_wheel_index({"a", "b"}, "right"), -1);
+}
+
+TEST(SerialProtocol, NumbersMustBePlainDecimals)
+{
+  for (const std::string bad : {"rp-5.00,", "rp0x1A,", "rp+3.0,", "rp1e3,", "rpnan,"})
+  {
+    auto r = parse_wheel_message(bad);
+    EXPECT_FALSE(r.has_right) << bad;
+    EXPECT_EQ(r.rejected, 1) << bad;
+  }
+}
+
+TEST(SerialProtocol, TakeLastLineKeepsTheUnfinishedTail)
+{
+  std::string buffer = "rp01.00,lp01.00,\r\nrp02.00,lp02.00,\r\nrp03";
+  std::string line;
+  ASSERT_TRUE(take_last_line(buffer, line));
+  EXPECT_EQ(line, "rp02.00,lp02.00,\r");
+  EXPECT_EQ(buffer, "rp03");
+  EXPECT_FALSE(take_last_line(buffer, line));
+  buffer += ".00,lp03.00,\r\n";
+  ASSERT_TRUE(take_last_line(buffer, line));
+  EXPECT_EQ(parse_wheel_message(line).right, 3.0);
+  EXPECT_TRUE(buffer.empty());
+}
+
+TEST(SerialProtocol, TakeLastLineDropsGarbageWithoutNewline)
+{
+  std::string buffer(300, 'x');
+  std::string line;
+  EXPECT_FALSE(take_last_line(buffer, line));
+  EXPECT_TRUE(buffer.empty());
+  buffer = "\nrp01.00,lp01.00,\n";
+  ASSERT_TRUE(take_last_line(buffer, line));
+  EXPECT_EQ(line, "rp01.00,lp01.00,");
 }

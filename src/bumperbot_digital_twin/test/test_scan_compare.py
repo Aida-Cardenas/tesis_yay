@@ -46,3 +46,22 @@ def test_arena_world_is_valid_sdf():
     assert len(doc.getElementsByTagName("model")) == 6
     with pytest.raises(ValueError):
         arena_world_sdf([1, 0, 0, 1])
+
+
+GATE = {"scan_sync_tolerance": 0.05, "scan_heading_tolerance": 0.035, "scan_max_linear": 0.05,
+        "scan_max_angular": 0.3}
+
+
+def test_scans_are_not_compared_when_only_the_heading_differs():
+    from bumperbot_digital_twin.scan_compare import scan_gate
+    still = [(0.0, 0.0), (0.0, 0.0)]
+    assert scan_gate(0.01, 0.0, still, GATE) is None
+    assert scan_gate(0.01, 0.10, still, GATE) == "rumbo"
+    assert scan_gate(0.01, -0.10, still, GATE) == "rumbo"
+    assert scan_gate(0.01, float("nan"), still, GATE) == "rumbo"
+
+
+def test_scans_are_not_compared_when_apart_or_moving():
+    from bumperbot_digital_twin.scan_compare import scan_gate
+    assert scan_gate(0.20, 0.0, [(0.0, 0.0)] * 2, GATE) == "posición"
+    assert scan_gate(0.01, 0.0, [(0.0, 0.0), (0.0, 0.5)], GATE) == "movimiento"

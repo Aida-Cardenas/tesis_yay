@@ -39,7 +39,7 @@ private:
   std::vector<double> velocity_commands_;
   std::vector<double> position_states_;
   std::vector<double> velocity_states_;
-  rclcpp::Time last_run_;
+  std::string rx_buffer_;
   int right_index_ = 0;
   int left_index_ = 1;
   rclcpp::Clock::SharedPtr clock_ = std::make_shared<rclcpp::Clock>(RCL_STEADY_TIME);

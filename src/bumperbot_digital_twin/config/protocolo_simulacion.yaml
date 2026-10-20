@@ -30,6 +30,6 @@ experiments:
 comparisons:
   - [S1, S2]
   - [S2, S4]
-  - [L150, L150C]
-  - [L300, L300C]
-  - [R300, R300T]
+  - [L150, L150C, rmse_real]
+  - [L300, L300C, rmse_real]
+  - [R300, R300T, rmse_real]

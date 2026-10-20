@@ -67,7 +67,7 @@ En RViz: **Nav2 Goal** para enviar una meta (AMCL arranca en la marca de salida;
 ros2 launch bumperbot_bringup simulated_robot.launch.py use_slam:=true
 ```
 
-El único mundo es `arena`, el recinto rectangular de pruebas que también se arma en el laboratorio. Su mundo y su mapa se regeneran juntos con `twin_calibrate arena` si el recinto real mide otra cosa.
+El único mundo es `arena`, el recinto rectangular de pruebas que también se arma en el laboratorio. Su mundo y su mapa se regeneran juntos con `twin_calibrate arena` si el recinto real mide otra cosa. Ese comando no toca dos cosas que hay que ajustar a mano: las metas de navegación de `bumperbot_digital_twin/config/metas_arena.yaml` (deben quedar dentro del recinto nuevo) y el argumento `arena` de `digital_twin.launch.py` (recinto del robot de prueba `fake_robot`), que tiene por defecto las medidas del recinto actual.
 
 ### Argumentos de `simulated_robot.launch.py` / `real_robot.launch.py`
 
@@ -80,8 +80,9 @@ El único mundo es `arena`, el recinto rectangular de pruebas que también se ar
 | `use_ekf` | `true` | EKF (robot_localization) fusiona ruedas + IMU y publica `odom → base_footprint` |
 | `use_safety_stop` | `false` | Lanza `safety_stop` (frena/detiene si el LiDAR ve un obstáculo cerca) |
 | `use_rviz` | `true` | Solo simulación: abrir RViz |
+| `gui` | `true` | Solo simulación: `false` corre Gazebo sin ventana |
 | `use_mock_hardware` | `false` | Solo robot real: sin Arduino, ruedas simuladas por ros2_control (para probar) |
-| `bt_xml` | `simple_navigation_w_replanning_and_recovery.xml` | Behavior tree de Nav2 (ruta completa) |
+| `bt_xml` | `bumperbot_navigation/behavior_tree/simple_navigation_w_replanning_and_recovery.xml` | Behavior tree de Nav2 (ruta completa al archivo) |
 | `arduino_port` | `/dev/arduino` | Puerto serie del Arduino (solo robot real) |
 
 ### Teleoperación
@@ -117,7 +118,19 @@ Luego se usa con `map_name:=mi_mapa`.
    ros2 launch bumperbot_bringup real_robot.launch.py use_slam:=true
    ```
    Sin udev, se puede indicar el puerto a mano: `arduino_port:=/dev/ttyUSB0`.
-4. **Visualizar** desde la laptop (misma red y mismo `ROS_DOMAIN_ID` en ambas máquinas):
+4. **Comprobar el sentido de giro, antes de cualquier otra prueba.** Si el robot estaba cableado para el sketch "invertido" del curso, con el sketch actual puede andar hacia atrás mientras la odometría de las ruedas parece correcta (los encoders se invierten junto con los motores). Solo la IMU y el LiDAR lo delatan.
+   1. *Hacia adelante, sin ROS.* Con `real_robot.launch.py` cerrado, abrir el monitor serie del Arduino IDE a 115200 baudios y enviar `rp03.00,lp03.00,` varias veces seguidas (el Arduino frena las ruedas si pasa medio segundo sin comandos). El robot debe avanzar hacia su frente y las respuestas deben empezar con `rp` y traer `lp` (signo positivo en ambas ruedas). Si una rueda gira hacia atrás, se invierten los dos cables de ese motor en el L298N; si gira hacia adelante pero responde con `n`, se intercambian las fases A y B de su encoder.
+   2. *Giro, con ROS.* Lanzar `real_robot.launch.py` y en otra terminal:
+      ```bash
+      ros2 topic pub -r 10 /key_vel geometry_msgs/msg/Twist "{angular: {z: 0.5}}"
+      ```
+      Visto desde arriba, el robot debe girar en sentido **antihorario**. Mientras gira, en otras dos terminales:
+      ```bash
+      ros2 topic echo /bumperbot_controller/odom --field twist.twist.angular.z
+      ros2 topic echo /imu/out --field angular_velocity.z
+      ```
+      Los dos deben ser **positivos** y parecidos (unos 0,5 rad/s), y el rumbo de la odometría debe ir aumentando. Si el robot gira en sentido horario, o la IMU da negativo mientras la odometría da positivo, hay que corregir el cableado (paso anterior) antes de seguir.
+5. **Visualizar** desde la laptop (misma red y mismo `ROS_DOMAIN_ID` en ambas máquinas):
    ```bash
    ros2 run rviz2 rviz2 -d /opt/ros/humble/share/nav2_bringup/rviz/nav2_default_view.rviz
    ```

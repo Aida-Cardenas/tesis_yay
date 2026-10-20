@@ -167,12 +167,13 @@ def test_experiment_protocol(tmp_path):
         return table[exp][key][0]
 
     report("protocolo_ci: " + " ".join(f"{e}={m(e) * 100:.1f}cm" for e in ("M", "MC", "D", "DC", "R", "RC", "RT"))
+           + " · real D=" + f"{m('D', 'rmse_real') * 100:.1f}cm DC={m('DC', 'rmse_real') * 100:.1f}cm"
            + " · real R=" + f"{m('R', 'rmse_real') * 100:.1f}cm RC={m('RC', 'rmse_real') * 100:.1f}cm"
            + f" RT={m('RT', 'rmse_real') * 100:.1f}cm · ganancias RT={table['RT']['ganancias']}")
     report("comparaciones: " + "; ".join(f"{c['a']} vs {c['b']} p={c['p']:.3f}" for c in data["comparaciones"]))
     report("modelo identificado: " + (out_dir / "modelo_gemelo.yaml").read_text().replace("\n", " "))
     assert m("MC") < 0.6 * m("M"), "El gemelo calibrado no redujo el error"
-    assert m("DC") < m("D"), "La compensación no redujo el error con 200 ms"
+    assert m("DC", "rmse_real") < m("D", "rmse_real"), "La compensación no redujo el error real con 200 ms"
     assert m("RC", "rmse_real") < m("R", "rmse_real"), "El predictor de Smith no redujo el error"
     assert m("RT", "rmse_real") < m("R", "rmse_real"), "Las ganancias sintonizadas no redujeron el error"
 

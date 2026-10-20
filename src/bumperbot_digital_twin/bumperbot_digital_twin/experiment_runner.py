@@ -104,6 +104,7 @@ class Runner:
         req.align = bool(kwargs.get("align", False))
         req.new_log = bool(kwargs.get("new_log", False))
         req.log_tag = kwargs.get("log_tag", "")
+        req.close_log = bool(kwargs.get("close_log", False))
         req.twin_model_file = kwargs.get("twin_model_file", "")
         gains = kwargs.get("gains") or {}
         req.kx, req.ky, req.ktheta = (float(gains.get(k, 0.0)) for k in ("kx", "ky", "ktheta"))
@@ -123,6 +124,8 @@ class Runner:
     def skip_reason(self, step):
         if step.get("twin_model") and self.calibration_failed:
             return "necesita el gemelo calibrado y la calibración falló"
+        if step.get("twin_model") and self.model_path is None:
+            return "necesita el gemelo calibrado y en esta sesión no se calibró (corre también el paso CAL)"
         if step.get("gains") == "tuned" and (self.tuning_failed or self.tuned_gains is None):
             return "necesita las ganancias sintonizadas y no hay"
         return None
@@ -155,6 +158,7 @@ class Runner:
                                      step["distance"], step["radius"], step["laps"], step["pause"])
             print(f"   Recorrido {step['pattern']} terminado ({total:.1f} s)")
         time.sleep(step["settle"])
+        self.configure(close_log=True)
         return True
 
     def gains_for(self, step):
@@ -212,7 +216,7 @@ class Runner:
                 m.samples = int(len(t))
                 setattr(model, channel, m)
                 fits[channel] = (m, t, u, y)
-                print(f"   {channel}: K={m.gain:.3f} τ={m.tau:.3f}s L={m.delay:.3f}s R²={m.r2:.3f}")
+                print(f"   {channel}: K={m.gain:.3f} τ={m.tau:.3f}s L={m.delay:.3f}s R² (respuesta simulada)={m.r2:.3f}")
             except ValueError as exc:
                 print(f"   {channel}: {exc}")
         missing = [c for c in ("linear", "angular") if c not in fits]
@@ -260,8 +264,12 @@ class Runner:
         return self.finish()
 
     def finish(self):
-        self.configure(new_log=True, log_tag="fin", feedback=True, compensation=False, twin_model=False,
-                       net_delay_ms=0.0, net_jitter_ms=0.0, net_loss=0.0, resume_sync=True)
+        try:
+            self.configure(close_log=True, feedback=True, compensation=False, twin_model=False,
+                           net_delay_ms=0.0, net_jitter_ms=0.0, net_loss=0.0, resume_sync=True,
+                           gains=DEFAULT_GAINS)
+        except Exception as exc:
+            print(f"No se pudo dejar el puente en su configuración normal: {exc}")
         paths = [p for runs in self.logs.values() for p in runs if os.path.exists(p)]
         if not paths:
             print("No hay corridas para analizar")
@@ -290,6 +298,10 @@ def main(argv=None):
     except KeyboardInterrupt:
         print("\nInterrumpido; genero el informe con lo que hay")
         return runner.finish()
+    except Exception as exc:
+        print(f"\nERROR: {exc}\nGenero el informe con las corridas completas hasta ahora")
+        runner.finish()
+        return 1
     finally:
         runner.player.stop()
         runner.dual.shutdown()

@@ -16,7 +16,8 @@ PID=$!
 sleep 30
 export ROS_DOMAIN_ID=20
 INFO="$(timeout 20 ros2 control list_controllers 2>&1)"$'\n'
-INFO+="scan: $(timeout 10 ros2 topic echo --once --field header.frame_id /scan 2>&1 | head -n1)"$'\n'
+SCAN_FRAME="$(timeout 10 ros2 topic echo --once --field header.frame_id /scan 2>&1 | head -n1)"
+INFO+="scan: ${SCAN_FRAME}"$'\n'
 INFO+="imu: $(timeout 10 ros2 topic echo --once --field header.frame_id /imu/out 2>&1 | head -n1)"$'\n'
 INFO+="odom filtered: $(timeout 10 ros2 topic echo --once --field pose.pose.position.x /odometry/filtered 2>&1 | head -n1)"$'\n'
 sleep 60
@@ -29,6 +30,10 @@ if [ -n "$CSV" ]; then
   python3 -c "
 import json,sys; s=json.load(open('/tmp/twin_gz_res/resumen.json'))[0]
 sys.exit(0 if s['error_posicion_m']['n'] > 100 and s['error_final_m'] < 0.08 else 1)" && FAIL=0
+fi
+if [ "$SCAN_FRAME" != "laser_link" ]; then
+  INFO+="FAIL el LiDAR de Gazebo publica en '${SCAN_FRAME}' y no en laser_link"$'\n'
+  FAIL=1
 fi
 if [ $FAIL -eq 0 ]; then
   annotate notice "Gemelo en Gazebo" "$INFO"

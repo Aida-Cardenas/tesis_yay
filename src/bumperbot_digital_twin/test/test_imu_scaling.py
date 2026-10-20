@@ -61,3 +61,47 @@ def test_gyro_bias_restarts_if_robot_moves():
 def test_gyro_bias_can_be_disabled():
     bias = imu.GyroBias(samples=0)
     assert bias.ready and bias.correct(1.0, 2.0, 3.0) == (1.0, 2.0, 3.0)
+
+
+def test_burst_read_splits_accel_and_gyro_and_skips_temperature():
+    from bumperbot_firmware.mpu6050_math import parse_burst
+    data = [0x00, 0x10, 0xFF, 0xF0, 0x40, 0x00, 0x12, 0x34, 0x00, 0x01, 0xFF, 0xFF, 0x80, 0x00]
+    accel, gyro = parse_burst(data)
+    assert accel == (16, -16, 16384)
+    assert gyro == (1, -1, -32768)
+
+
+def test_burst_read_rejects_short_transfers():
+    from bumperbot_firmware.mpu6050_math import parse_burst
+    with pytest.raises(ValueError):
+        parse_burst([0] * 12)
+
+
+def test_constant_rotation_while_wheels_move_is_not_taken_as_bias():
+    from bumperbot_firmware.mpu6050_math import GyroBias
+    bias = GyroBias(50)
+    for i in range(200):
+        if i < 120:
+            bias.restart()
+        else:
+            bias.add(0.0, 0.0, 0.01)
+    assert bias.ready and bias.bias[2] == pytest.approx(0.01)
+    assert bias.restarts == 0 and not bias.suspicious
+
+
+def test_restart_counts_only_when_samples_were_discarded():
+    from bumperbot_firmware.mpu6050_math import GyroBias
+    bias = GyroBias(50)
+    for _ in range(10):
+        bias.add(0.0, 0.0, 0.0)
+    bias.restart()
+    bias.restart()
+    assert bias.restarts == 1
+
+
+def test_large_steady_bias_is_flagged():
+    from bumperbot_firmware.mpu6050_math import GyroBias
+    bias = GyroBias(20)
+    for _ in range(20):
+        bias.add(0.0, 0.0, 0.8)
+    assert bias.ready and bias.suspicious

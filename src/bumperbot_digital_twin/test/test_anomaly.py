@@ -76,7 +76,8 @@ def test_frozen_detector_keeps_stall_active_until_robot_really_moves():
     t = 0.0
     while t < 12.0:
         jammed = t < 7.0
-        if lock.update(t, "atasco" in det.active) or lock.locked:
+        lock.update(t, "atasco" in det.active)
+        if lock.locked:
             t += 0.02
             continue
         meas = 0.0 if jammed else 0.2

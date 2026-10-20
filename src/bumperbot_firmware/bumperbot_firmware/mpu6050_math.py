@@ -16,6 +16,14 @@ ACCEL_RANGE = 0
 GYRO_CONFIG_VALUE = GYRO_RANGE << 3
 ACCEL_CONFIG_VALUE = ACCEL_RANGE << 3
 
+# Filtro paso bajo interno (DLPF_CFG=3, unos 44 Hz). El nodo lee a 100 Hz, así
+# que con el valor 0 (260 Hz) el ruido por encima de 50 Hz se doblaba.
+DLPF_CONFIG_VALUE = 3
+
+# Rango plausible del cero de un MPU6050 (unos ±20 °/s). Un cero mayor casi
+# siempre significa que el robot estaba girando mientras se medía.
+MAX_PLAUSIBLE_BIAS = 0.35
+
 GYRO_LSB_PER_RAD_S = GYRO_LSB_PER_DPS[GYRO_RANGE] * 180.0 / math.pi
 ACCEL_LSB_PER_M_S2 = ACCEL_LSB_PER_G[ACCEL_RANGE] / STANDARD_GRAVITY
 
@@ -28,6 +36,19 @@ def to_signed(high, low):
     if value >= 32768:
         value -= 65536
     return value
+
+
+def parse_burst(data):
+    """Separa las 14 lecturas de una sola transacción desde ACCEL_XOUT_H (0x3B).
+
+    Orden en el MPU6050: acelerómetro x, y, z, temperatura, giroscopio x, y, z,
+    cada uno con el byte alto primero. Leerlos juntos evita mezclar el byte alto
+    de una muestra con el bajo de la siguiente.
+    """
+    if len(data) < 14:
+        raise ValueError(f"se esperaban 14 bytes y llegaron {len(data)}")
+    words = [to_signed(data[i], data[i + 1]) for i in range(0, 14, 2)]
+    return tuple(words[0:3]), tuple(words[4:7])
 
 
 def gyro_to_rad_s(raw):
@@ -48,7 +69,9 @@ class GyroBias:
     El MPU6050 marca algunos °/s aunque no gire. Sin restarlo, el EKF integra un
     giro que no existe y el detector de anomalías ve deslizamientos falsos.
     Si durante la medición el giro varía más que `max_spread` (rad/s), se supone
-    que alguien movió el robot y se empieza de nuevo.
+    que alguien movió el robot y se empieza de nuevo. Un giro constante no cambia
+    la dispersión, por eso el driver también llama a `restart()` cuando las
+    ruedas se mueven, y `suspicious` avisa si el cero medido es demasiado grande.
     """
 
     def __init__(self, samples, max_spread=0.05):
@@ -64,6 +87,17 @@ class GyroBias:
         self._count = 0
         self._low = [math.inf] * 3
         self._high = [-math.inf] * 3
+
+    def restart(self):
+        if self.ready:
+            return
+        if self._count > 0:
+            self.restarts += 1
+        self._reset()
+
+    @property
+    def suspicious(self):
+        return self.ready and max(abs(b) for b in self.bias) > MAX_PLAUSIBLE_BIAS
 
     def add(self, x, y, z):
         if self.ready:

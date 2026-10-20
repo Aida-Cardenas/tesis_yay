@@ -1,5 +1,6 @@
 #include "bumperbot_firmware/serial_protocol.hpp"
 
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <iomanip>
@@ -12,9 +13,16 @@ namespace
 {
 bool parse_number(const std::string & text, double & value)
 {
-  if (text.empty())
+  if (text.empty() || !std::isdigit(static_cast<unsigned char>(text[0])))
   {
     return false;
+  }
+  for (const char c : text)
+  {
+    if (!std::isdigit(static_cast<unsigned char>(c)) && c != '.' && c != ' ' && c != '\r' && c != '\n')
+    {
+      return false;
+    }
   }
   const char * begin = text.c_str();
   char * end = nullptr;
@@ -78,6 +86,24 @@ std::string format_wheel_command(double right, double left)
   append_wheel(out, 'r', right);
   append_wheel(out, 'l', left);
   return out.str();
+}
+
+bool take_last_line(std::string & buffer, std::string & line, size_t max_buffer)
+{
+  const size_t end = buffer.rfind('\n');
+  if (end == std::string::npos)
+  {
+    if (buffer.size() > max_buffer)
+    {
+      buffer.clear();
+    }
+    return false;
+  }
+  const size_t previous = end == 0 ? std::string::npos : buffer.rfind('\n', end - 1);
+  const size_t begin = previous == std::string::npos ? 0 : previous + 1;
+  line = buffer.substr(begin, end - begin);
+  buffer.erase(0, end + 1);
+  return true;
 }
 
 int find_wheel_index(const std::vector<std::string> & joint_names, const std::string & side)

@@ -24,6 +24,7 @@ class FirstOrderModel:
     delay: float = 0.0
     r2: float = float("nan")
     samples: int = 0
+    r2_step: float = float("nan")
 
     def discrete(self, dt):
         """Coeficientes (a, b) de y[k+1] = a·y[k] + b·u[k-d] con retención de orden cero."""
@@ -80,16 +81,25 @@ class FirstOrderFilter:
         self.u_delayed = 0.0
 
     def update(self, t, u):
-        self.buffer.append((t, u))
-        while self.buffer and self.buffer[0][0] <= t - self.model.delay:
-            self.u_delayed = self.buffer.popleft()[1]
+        """Avanza el modelo hasta t y registra la entrada u aplicada desde t.
+
+        Entre el paso anterior y t actúa la entrada aplicada L segundos antes del paso
+        anterior (retención de orden cero), igual que en y[k+1] = a·y[k] + b·u[k-d],
+        la forma con la que fit_first_order identifica el modelo. La entrada nueva se
+        registra después, así el retardo efectivo es exactamente L.
+        """
         if self.t_prev is None:
             self.t_prev = t
+            self.buffer.append((t, u))
             return self.y
+        limit = self.t_prev - self.model.delay + 1e-9
+        while self.buffer and self.buffer[0][0] <= limit:
+            self.u_delayed = self.buffer.popleft()[1]
         dt = max(0.0, t - self.t_prev)
-        self.t_prev = t
         alpha = 1.0 if self.model.tau <= 1e-9 else 1.0 - math.exp(-dt / self.model.tau)
         self.y += alpha * (self.model.gain * self.u_delayed - self.y)
+        self.buffer.append((t, u))
+        self.t_prev = t
         return self.y
 
 
@@ -142,7 +152,22 @@ def fit_first_order(t, u, y, max_delay=0.6, dt=None):
     sse, a, b, d, target = best
     sst = float(np.sum((target - np.mean(target)) ** 2)) or 1e-12
     tau = 0.0 if a <= 1e-9 else -dt / math.log(a)
-    return FirstOrderModel(gain=b / (1.0 - a), tau=tau, delay=d * dt, r2=1.0 - sse / sst, samples=n)
+    model = FirstOrderModel(gain=b / (1.0 - a), tau=tau, delay=d * dt, samples=n, r2_step=1.0 - sse / sst)
+    model.r2 = simulated_r2(model, grid, U, Y)
+    return model
+
+
+def simulated_r2(model, t, u, y):
+    """R² de la respuesta simulada completa frente a la medida.
+
+    A diferencia del R² de un paso (r2_step), que predice cada muestra a partir de la
+    medida anterior y sale cercano a 1 casi siempre que dt es mucho menor que τ, este
+    compara la respuesta que produce el modelo solo con los comandos.
+    """
+    y = np.asarray(y, float)
+    sim = simulate(model, np.asarray(t, float), np.asarray(u, float))
+    sst = float(np.sum((y - np.mean(y)) ** 2)) or 1e-12
+    return 1.0 - float(np.sum((y - sim) ** 2)) / sst
 
 
 def fit_error(model, t, u, y):

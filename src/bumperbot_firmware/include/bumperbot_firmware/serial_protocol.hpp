@@ -27,6 +27,12 @@ WheelReading parse_wheel_message(const std::string & message);
 // Arma el comando para el Arduino con la velocidad de cada rueda en rad/s.
 std::string format_wheel_command(double right, double left);
 
+// Saca de `buffer` la última línea completa (sin el '\n') y deja lo que viene
+// después, que todavía no terminó de llegar. Las líneas completas anteriores se
+// descartan porque ya son viejas. Si no hay ninguna completa devuelve false; si
+// el búfer pasa de `max_buffer` sin un '\n' se vacía (llegó basura).
+bool take_last_line(std::string & buffer, std::string & line, size_t max_buffer = 256);
+
 // Posición de cada rueda en la lista de articulaciones de ros2_control, buscando
 // por nombre: primero el nombre exacto y, si no está, cualquiera que contenga
 // "right" o "left". Devuelve -1 si no la encuentra.
