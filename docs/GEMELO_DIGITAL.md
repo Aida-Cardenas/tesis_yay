@@ -253,48 +253,50 @@ Análisis de una corrida: `ros2 run bumperbot_digital_twin analyze_twin_log ~/tw
 7. El robot real completo con hardware simulado (ros2_control mock) + EKF + Nav2 + detector + medidor de odometría, y el gemelo siguiéndolo. Cada nodo de Nav2 debe quedar en `active [3]`; como el hardware simulado no tiene LiDAR, se publica un `map → odom` fijo para que AMCL no haga falta.
 8. El gemelo en Gazebo sin ventana, en el recinto, siguiendo a un robot real de mentira, y una meta de navegación con vista previa usando Nav2 y AMCL del gemelo. Comprueba además que el LiDAR de Gazebo publica en `laser_link`.
 
-Resultados de la corrida automática del 4 de octubre de 2026 (todas las pruebas aprobadas; todo simulado, en un solo computador):
+Resultados de la corrida automática del 20 de octubre de 2026 (todas las pruebas aprobadas; todo simulado, en un solo computador):
 
 **Sincronización y LiDAR** (robot "real" de mentira y gemelo con 10 % menos de velocidad, cuadrado de 0,6 m a 0,3 m/s, ambos en un recinto de 2 × 2 m):
 
 | Líder | Corrección | Error medio | Error máximo | Error final | MAE del LiDAR | Anomalías |
 |---|---|---|---|---|---|---|
-| real | sí | 1,0 cm | 2,2 cm | 0,8 cm | 1,9 cm | ninguna |
-| real | no (espejo) | 15,5 cm | 24,5 cm | 24,4 cm | 1,6 cm | ninguna |
-| gemelo | sí | 1,0 cm | 2,2 cm | 0,9 cm | 2,2 cm | ninguna |
+| real | sí | 1,0 cm | 2,4 cm | 0,8 cm | 1,8 cm | ninguna |
+| real | no (espejo) | 15,5 cm | 25,0 cm | 25,0 cm | 1,6 cm | ninguna |
+| gemelo | sí | 1,0 cm | 3,0 cm | 0,8 cm | 2,1 cm | ninguna |
 
 **Fallas inyectadas:** atasco, deslizamiento y empujón se detectaron cada uno como su tipo, sin falsas alarmas de los otros.
 
-**Protocolo completo** (`protocolo_ci` con `twin_experiment --auto`, 2 repeticiones; el robot "real" de mentira tiene K = 0,85, τ = 0,3 s y 0,1 s de retardo, y el gemelo responde casi ideal):
+**Protocolo completo** (`protocolo_ci` con `twin_experiment --auto`, 2 repeticiones; el robot "real" de mentira tiene K = 0,85, τ = 0,3 s y 0,1 s de retardo, y el gemelo responde casi ideal). Todas las filas usan el error real entre los dos robots en el mismo instante (`rmse_real`), salvo M y MC, que no tienen retardo de red y en las que los dos errores coinciden:
 
-| Experimento | RMSE de posición | Reducción |
-|---|---|---|
-| M: solo copia comandos | 24,2 cm | |
-| MC: solo copia comandos, gemelo calibrado | 2,7 cm | −89 % |
-| D: red de 200 ms, sin compensación | 3,3 cm | |
-| DC: red de 200 ms, con compensación | 1,9 cm | −42 % |
-| R: el real sigue al gemelo, red de 300 ms (error real en el mismo instante) | 24,2 cm | |
-| RC: lo mismo con predictor de Smith | 13,2 cm | −45 % |
-| RT: lo mismo con ganancias sintonizadas por el gemelo (kx 0,3 / ky 0,5 / kθ 0,3) | 12,4 cm | −49 % |
+| Experimento | RMSE de posición | Reducción | Prueba t de Welch |
+|---|---|---|---|
+| M: solo copia comandos | 25,9 cm | | |
+| MC: solo copia comandos, gemelo calibrado | 2,6 cm | −90 % | p = 0,007 |
+| D: red de 200 ms, sin compensación | 2,0 cm | | |
+| DC: red de 200 ms, con compensación | 1,8 cm | −10 % | p = 0,005 (0,18 en la corrida anterior) |
+| R: el real sigue al gemelo, red de 300 ms | 24,5 cm | | |
+| RC: lo mismo con predictor de Smith | 14,0 cm | −43 % | p = 0,015 |
+| RT: lo mismo con ganancias sintonizadas por el gemelo (kx 0,4 / ky 0,5 / kθ 0,3) | 12,5 cm | −49 % | p = 0,009 |
 
-Las cuatro mejoras fueron significativas en la prueba t de Welch (p < 0,05). La sintonización sola logra lo mismo que el predictor de Smith: con 300 ms de retardo, lo mejor es corregir con suavidad. El modelo identificado a partir de M fue K = 0,86, τ = 0,34 s y L = 0,05 s (R² = 0,999), cercano a los valores con que se configuró el robot de mentira (el ajuste reparte parte del retardo en τ).
+El gemelo calibrado y la compensación con el robot real como seguidor dan mejoras grandes y significativas. Con el gemelo como seguidor (D/DC), la compensación casi no cambia el error real. El RMSE compensado, que es el que mide el propio puente, sí baja de 3,4 a 1,9 cm, pero eso es la corrección alcanzando la pose extrapolada, no al robot real. Con dos repeticiones, el valor de p de esa comparación cambió de una corrida a otra; la mejora del error real es pequeña. La sintonización sola logra lo mismo que el predictor de Smith: con 300 ms de retardo, lo mejor es corregir con suavidad.
+
+El modelo identificado a partir de M fue K = 0,85, τ = 0,31 s y L = 0,088 s en la velocidad lineal (R² de la respuesta simulada = 0,998), y K = 0,84, τ = 0,28 s y L = 0,106 s en la angular (R² = 0,999), cercano a los valores con que se configuró el robot de mentira. La diferencia de unos 10 ms con el retardo configurado viene de que el registro del puente muestrea a 20 Hz y ve cada cambio de comando con hasta 50 ms de atraso.
 
 **Navegación con vista previa** (navegadores de mentira, recinto `arena`):
 
 | Meta | Veredicto del gemelo | Tiempo gemelo / real | Desviación media / máxima entre rutas | Error final del real |
 |---|---|---|---|---|
-| N1 (1,2; 0) | Aprobada | 7,4 s / 6,7 s | 0,0 / 0,2 cm | 4,8 cm |
-| N2 (1,0; 0,6) | Aprobada | 7,8 s / 6,1 s | 1,8 / 4,3 cm | 4,5 cm |
-| N3 (0,3; −0,6) | Aprobada | 13,3 s / 11,2 s | 2,9 / 5,4 cm | 4,6 cm |
-| N4 (0; 0) | Aprobada | 7,8 s / 7,2 s | 2,1 / 8,6 cm | 4,4 cm |
-| X1 pegada a la pared | Rechazada: pasó a 18 cm (mínimo 20) | 11,8 s / — | — | el real no se movió |
+| N1 (1,2; 0) | Aprobada | 7,9 s / 6,7 s | 0,0 / 0,1 cm | 4,7 cm |
+| N2 (1,0; 0,6) | Aprobada | 7,8 s / 6,1 s | 1,7 / 3,9 cm | 4,4 cm |
+| N3 (0,3; −0,6) | Aprobada | 13,2 s / 11,3 s | 2,7 / 5,2 cm | 4,4 cm |
+| N4 (0; 0) | Aprobada | 7,8 s / 7,2 s | 2,7 / 10,4 cm | 4,5 cm |
+| X1 pegada a la pared | Rechazada: pasó a 18 cm (mínimo 20) | 12,0 s / — | — | el real no se movió |
 | X2 fuera del recinto | Rechazada: no hay camino | 0,1 s / — | — | el real no se movió |
 
-**Vista previa con Nav2 de verdad**: el gemelo en Gazebo (AMCL en el mapa `arena` y Nav2) aprobó una meta a (1,0; 0,3) m en 8,6 s; el robot real de mentira la ejecutó en 6,8 s con una desviación media de 4,5 cm respecto a la ruta prevista (máxima 8,4 cm).
+**Vista previa con Nav2 de verdad**: el gemelo en Gazebo (AMCL en el mapa `arena` y Nav2) aprobó una meta a (1,0; 0,3) m en 8,7 s; el robot real de mentira la ejecutó en 6,7 s con una desviación media de 4,4 cm respecto a la ruta prevista (máxima 8,5 cm).
 
-**Gemelo en Gazebo** (física, EKF y Nav2) siguiendo al robot de mentira en el recinto `arena`: error medio 0,5 cm, máximo 2,7 cm; LiDAR de Gazebo frente al de mentira: MAE 2,2 cm, coincidencia de visibilidad 99,7 %.
+**Gemelo en Gazebo** (física, EKF y Nav2) siguiendo al robot de mentira en el recinto `arena`: error medio 0,4 cm, máximo 1,9 cm; LiDAR de Gazebo (en `laser_link`) frente al de mentira: MAE 2,1 cm, coincidencia de visibilidad 99,7 %.
 
-**Robot real con hardware simulado** (ros2_control mock + EKF + Nav2 + detector, 10 comprobaciones aprobadas) y gemelo siguiéndolo en un ida y vuelta de 0,8 m: error medio 1,0 cm, máximo 1,5 cm.
+**Robot real con hardware simulado** (ros2_control mock + EKF + Nav2 en `active [3]` + detector, 17 comprobaciones aprobadas) y gemelo siguiéndolo en un ida y vuelta de 0,8 m: error medio 1,0 cm, máximo 1,5 cm.
 
 La latencia de red en estas pruebas es local (menos de 2 ms); con la Raspberry Pi por Wi-Fi será mayor, y es lo que mide `protocolo_real`.
 

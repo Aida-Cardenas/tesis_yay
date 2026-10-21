@@ -15,12 +15,12 @@ Qué se hizo con cada punto de la segunda revisión, dónde está el cambio y c�
 | # | Observación | Estado | Cambio | Comprobación |
 |---|---|---|---|---|
 | N-C1 | El filtro aplica el retardo con una muestra de menos | Corregido | `FirstOrderFilter.update` integra con la entrada vigente en (t_prev, t] y recién después guarda la nueva; además integra por tramos, así que aplica L exacto aunque no sea múltiplo del paso | `test_dynamics.py`: el ajuste recupera exactamente (1e-6) retardos de 0 a 300 ms, también fraccionarios (20, 70, 130 ms), y el filtro coincide con el modelo discreto |
-| N-C1 (CI) | "Explica por qué CI identifica L = 0,05 s" | Causa distinta | CI no identifica el filtro sino al robot de prueba `fake_robot`. Después de corregir el filtro, CI siguió dando 0,05 s. Había dos causas: `fake_robot` tenía el mismo error de orden (avanzaba con el comando recién sacado de la cola), y el ajuste solo probaba retardos múltiplos del periodo del registro (50 ms). Se corrigió `fake_robot` y el ajuste ahora identifica retardos fraccionarios (`y[k+1] = a·y[k] + b1·u[k−d] + b2·u[k−d−1]`, discretización exacta con L = d·dt + ε) | `test_fit_recovers_a_delay_between_samples_from_a_faster_robot`. En CI: L = {{L_CI}} s con 0,1 s configurados. Lo que falta para 0,1 s se explica porque el registro ve cada cambio de comando hasta 50 ms después de que ocurrió |
+| N-C1 (CI) | "Explica por qué CI identifica L = 0,05 s" | Causa distinta | CI no identifica el filtro sino al robot de prueba `fake_robot`. Después de corregir el filtro, CI siguió dando 0,05 s. Había dos causas: `fake_robot` tenía el mismo error de orden (avanzaba con el comando recién sacado de la cola), y el ajuste solo probaba retardos múltiplos del periodo del registro (50 ms). Se corrigió `fake_robot` y el ajuste ahora identifica retardos fraccionarios (`y[k+1] = a·y[k] + b1·u[k−d] + b2·u[k−d−1]`, discretización exacta con L = d·dt + ε) | `test_fit_recovers_a_delay_between_samples_from_a_faster_robot`. En CI: L = 0,088 s (lineal) y 0,106 s (angular), con 0,1 s configurados. La diferencia de unos 10 ms viene de que el registro muestrea a 20 Hz y ve cada cambio de comando con hasta 50 ms de atraso |
 | N-L1 | El CI del robot con mock no prueba que Nav2 arranque | Corregido | `grep -qx 'active \[3\]'` en map_server, amcl, planner, controller, smoother, behavior y bt_navigator; `grep -w active` en los controladores; un `map → odom` fijo reemplaza a AMCL, que sin LiDAR no lo publica | `ci/test_mock_stack.sh` |
 | N-L2 | La única prueba real de Nav2 no bloquea el CI | Corregido | El paso de Gazebo y Nav2 ya no tiene `continue-on-error`; se repite una vez si falla (Gazebo sin pantalla a veces no arranca) y además exige que el LiDAR publique en `laser_link`. Se agregó `<ignition_frame_id>` junto a `<gz_frame_id>` para Fortress | `ci/test_gazebo_twin.sh` |
 | N-F2 | Lecturas de 16 bits de la IMU partidas | Corregido | Una sola lectura de 14 bytes desde `0x3B` (`parse_burst` en `mpu6050_math.py`) | `test_imu_scaling.py` |
 | N-F3 | Un giro constante al arrancar se toma como cero del giroscopio | Corregido | El driver escucha `/joint_states` y reinicia la medición mientras alguna rueda supera 0,05 rad/s (y 0,3 s después). Además avisa si el cero medido supera 0,35 rad/s, que no es plausible para un MPU6050 quieto | `test_imu_scaling.py` |
-| N-T3 | El R² informado es el de un paso | Corregido | `model.r2` es ahora el de la respuesta simulada (`simulated_r2`); el de un paso queda como `r2_step`. Las etiquetas dicen "R² (respuesta simulada)" | `test_dynamics.py`: el de un paso supera al simulado en un modelo con error. En CI: R² simulado {{R2_CI}} |
+| N-T3 | El R² informado es el de un paso | Corregido | `model.r2` es ahora el de la respuesta simulada (`simulated_r2`); el de un paso queda como `r2_step`. Las etiquetas dicen "R² (respuesta simulada)" | `test_dynamics.py`: el de un paso supera al simulado en un modelo con error. En CI: R² simulado 0,998 (lineal) y 0,999 (angular) |
 
 ## Bajas
 
@@ -61,6 +61,21 @@ Qué se hizo con cada punto de la segunda revisión, dónde está el cambio y c�
 
 ## Resultados de CI con las correcciones
 
-{{RESULTADOS}}
+Corrida del 20 de octubre de 2026, todas las pruebas aprobadas, incluidas las de Gazebo con Nav2 (ahora obligatorias) y el robot con hardware simulado con Nav2 en `active [3]`.
+
+| Comparación (error real, 2 repeticiones) | Sin | Con | Reducción | p |
+|---|---|---|---|---|
+| M vs MC: gemelo calibrado | 25,9 cm | 2,6 cm | −90 % | 0,007 |
+| D vs DC: compensación, gemelo seguidor, 200 ms | 2,0 cm | 1,8 cm | −10 % | 0,005 |
+| R vs RC: predictor de Smith, real seguidor, 300 ms | 24,5 cm | 14,0 cm | −43 % | 0,015 |
+| R vs RT: ganancias sintonizadas, real seguidor, 300 ms | 24,5 cm | 12,5 cm | −49 % | 0,009 |
+
+Lo que cambió respecto a lo que decía la versión anterior, que medía con el error compensado:
+- **D vs DC.** Antes: 3,3 → 1,9 cm (−42 %). Con el error real, la compensación con el gemelo como seguidor casi no cambia nada. Su p fue 0,18 en una corrida y 0,005 en la siguiente; con dos repeticiones no es estable. Se probó también con el gemelo calibrado, y la compensación empeoró el error real (3,8 → 4,5 cm). La extrapolación con velocidad constante se adelanta en las paradas y los giros del cuadrado. Una predicción con el modelo identificado y los comandos ya enviados queda como trabajo futuro.
+- **R vs RC y R vs RT** siguen siendo significativas con el error real.
+
+Modelo identificado en CI (configurado K = 0,85, τ = 0,3 s, L = 0,1 s):
+- lineal: K = 0,85, τ = 0,31 s, L = 0,088 s, R² simulado 0,998;
+- angular: K = 0,84, τ = 0,28 s, L = 0,106 s, R² simulado 0,999.
 
 Los números de `GEMELO_DIGITAL.md` y del borrador de la tesis se actualizaron con esta corrida.
