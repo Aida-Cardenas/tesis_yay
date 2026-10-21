@@ -83,24 +83,36 @@ class FirstOrderFilter:
     def update(self, t, u):
         """Avanza el modelo hasta t y registra la entrada u aplicada desde t.
 
-        Entre el paso anterior y t actúa la entrada aplicada L segundos antes del paso
-        anterior (retención de orden cero), igual que en y[k+1] = a·y[k] + b·u[k-d],
-        la forma con la que fit_first_order identifica el modelo. La entrada nueva se
-        registra después, así el retardo efectivo es exactamente L.
+        Cada entrada se mantiene (retención de orden cero) hasta la siguiente y llega
+        al robot L segundos después. Entre el paso anterior y t se integra en forma
+        exacta tramo por tramo, cambiando de entrada justo cuando le toca, así que el
+        retardo es exactamente L aunque no sea múltiplo del paso. Es el mismo modelo
+        con el que fit_first_order identifica (K, τ, L).
         """
         if self.t_prev is None:
             self.t_prev = t
             self.buffer.append((t, u))
             return self.y
-        limit = self.t_prev - self.model.delay + 1e-9
-        while self.buffer and self.buffer[0][0] <= limit:
-            self.u_delayed = self.buffer.popleft()[1]
-        dt = max(0.0, t - self.t_prev)
-        alpha = 1.0 if self.model.tau <= 1e-9 else 1.0 - math.exp(-dt / self.model.tau)
-        self.y += alpha * (self.model.gain * self.u_delayed - self.y)
+        delay = self.model.delay
+        s = self.t_prev
+        while True:
+            switch = self.buffer[0][0] + delay if self.buffer else math.inf
+            seg_end = min(t, switch)
+            self._advance(max(0.0, seg_end - s))
+            s = max(s, seg_end)
+            if self.buffer and switch <= t + 1e-9:
+                self.u_delayed = self.buffer.popleft()[1]
+                continue
+            break
         self.buffer.append((t, u))
         self.t_prev = t
         return self.y
+
+    def _advance(self, dt):
+        if dt <= 0.0:
+            return
+        alpha = 1.0 if self.model.tau <= 1e-9 else 1.0 - math.exp(-dt / self.model.tau)
+        self.y += alpha * (self.model.gain * self.u_delayed - self.y)
 
 
 def simulate(model, t, u):
@@ -127,8 +139,14 @@ def resample(t, *signals, dt=None):
 def fit_first_order(t, u, y, max_delay=0.6, dt=None):
     """Identifica (K, τ, L) por mínimos cuadrados probando cada retardo posible.
 
-    Ajusta y[k+1] = a·y[k] + b·u[k-d] para d = 0..max_delay/dt y se queda con el de
-    menor error. K = b/(1-a), τ = -dt/ln(a), L = d·dt.
+    Con entrada retenida entre muestras y un retardo L = d·dt + ε (0 ≤ ε < dt), la
+    discretización exacta del primer orden es
+
+        y[k+1] = a·y[k] + b1·u[k-d] + b2·u[k-d-1]
+
+    con a = e^(-dt/τ), b1 = K·(1 - e^(-(dt-ε)/τ)) y b2 = K·(e^(-(dt-ε)/τ) - a). Se ajusta
+    para cada d y se queda con el de menor error; de los coeficientes salen K, τ y la
+    parte fraccionaria ε, así el retardo no queda redondeado al periodo del registro.
     """
     grid, dt, (U, Y) = resample(t, u, y, dt=dt)
     n = len(grid)
@@ -136,23 +154,30 @@ def fit_first_order(t, u, y, max_delay=0.6, dt=None):
         raise ValueError("La entrada no varía: el robot no recibió comandos en este registro")
     best = None
     for d in range(0, int(round(max_delay / dt)) + 1):
-        if n - 1 - d < 10:
+        first = d + 1
+        if n - 1 - first < 10:
             break
-        X = np.column_stack([Y[d:n - 1], U[0:n - 1 - d]])
-        target = Y[d + 1:n]
+        X = np.column_stack([Y[first:n - 1], U[first - d:n - 1 - d], U[first - d - 1:n - 2 - d]])
+        target = Y[first + 1:n]
         coef, *_ = np.linalg.lstsq(X, target, rcond=None)
-        a, b = float(coef[0]), float(coef[1])
-        if not (0.0 <= a < 1.0) or abs(b) < 1e-9:
+        a, b1, b2 = (float(c) for c in coef)
+        if not (0.0 <= a < 1.0) or abs(b1 + b2) < 1e-9:
             continue
         sse = float(np.sum((target - X @ coef) ** 2))
         if best is None or sse < best[0]:
-            best = (sse, a, b, d, target)
+            best = (sse, a, b1, b2, d, target)
     if best is None:
         raise ValueError("No se encontró un modelo de primer orden estable")
-    sse, a, b, d, target = best
+    sse, a, b1, b2, d, target = best
     sst = float(np.sum((target - np.mean(target)) ** 2)) or 1e-12
+    gain = (b1 + b2) / (1.0 - a)
     tau = 0.0 if a <= 1e-9 else -dt / math.log(a)
-    model = FirstOrderModel(gain=b / (1.0 - a), tau=tau, delay=d * dt, samples=n, r2_step=1.0 - sse / sst)
+    eps = 0.0
+    if tau > 0.0 and gain != 0.0:
+        q = min(max(1.0 - b1 / gain, a), 1.0)
+        eps = dt + tau * math.log(q) if q > 0.0 else 0.0
+        eps = min(max(eps, 0.0), dt)
+    model = FirstOrderModel(gain=gain, tau=tau, delay=d * dt + eps, samples=n, r2_step=1.0 - sse / sst)
     model.r2 = simulated_r2(model, grid, U, Y)
     return model
 

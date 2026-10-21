@@ -30,7 +30,8 @@ tesis-gemelo-digital-wmr/          <- esta carpeta ES el workspace (colcon build
 ├── install_dependencies.sh
 ├── docs/GEMELO_DIGITAL.md      arquitectura, uso y métricas del gemelo digital
 ├── docs/ORIGEN_DEL_CODIGO.md   qué vino de qué módulo y cómo se relaciona con la tesis
-└── docs/RESPUESTA_REVISION.md  qué se hizo con cada punto de la revisión de código
+├── docs/RESPUESTA_REVISION.md  qué se hizo con cada punto de la primera revisión de código
+└── docs/RESPUESTA_REVISION_2.md  ídem para la segunda revisión
 ```
 
 ## Requisitos

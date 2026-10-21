@@ -61,7 +61,7 @@ def test_wheel_calibration():
         wheel_calibration(0.0, 1.0)
 
 
-@pytest.mark.parametrize("delay", [0.0, 0.05, 0.1, 0.3])
+@pytest.mark.parametrize("delay", [0.0, 0.02, 0.05, 0.07, 0.1, 0.13, 0.3])
 def test_fit_recovers_the_filter_delay_exactly(delay):
     t = np.arange(0, 40, 0.05)
     u = excitation(t)
@@ -93,3 +93,25 @@ def test_simulated_r2_is_stricter_than_one_step_r2():
     assert simulated_r2(wrong, t, u, y) < 0.95
     m = fit_first_order(t, u, y)
     assert m.r2 == pytest.approx(1.0, abs=1e-6) and m.r2_step == pytest.approx(1.0, abs=1e-6)
+
+
+def test_filter_delay_does_not_depend_on_the_step():
+    model = FirstOrderModel(0.9, 0.2, 0.07)
+    fine = np.arange(0, 10, 0.001)
+    coarse = np.arange(0, 10, 0.05)
+    exc = lambda t: excitation(np.atleast_1d(t))
+    y_fine = simulate(model, fine, exc(fine))
+    y_coarse = simulate(model, coarse, exc(coarse))
+    idx = np.searchsorted(fine, coarse - 1e-9)
+    assert np.max(np.abs(y_fine[idx] - y_coarse)) < 0.01
+
+
+def test_fit_recovers_a_delay_between_samples_from_a_faster_robot():
+    model = FirstOrderModel(0.85, 0.3, 0.1)
+    fast = np.arange(0, 60, 0.02)
+    y = simulate(model, fast, excitation(fast))
+    log = np.arange(0.013, 59, 0.05)
+    idx = np.searchsorted(fast, log, side="right") - 1
+    m = fit_first_order(log, excitation(fast)[idx], y[idx])
+    assert m.delay == pytest.approx(0.1, abs=0.02)
+    assert m.tau == pytest.approx(0.3, rel=0.1)

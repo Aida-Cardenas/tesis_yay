@@ -102,7 +102,7 @@ Algunos de estos archivos se quitaron en la limpieza (ver arriba); la tabla se d
 6. **Simulador.** El capítulo III.1 menciona `gazebo_ros_pkgs`, que es del Gazebo viejo (Classic). El sistema usa Gazebo Fortress con `ros_gz`.
 7. **Limitaciones (V.1).** El primer punto dice que no se abordó la navegación autónoma, pero el código sí incluye Nav2, planificación y evasión de obstáculos.
 
-## 5. Errores del código del curso que se corrigieron (revisión de octubre 2026)
+## 5. Errores del código del curso que se corrigieron (revisiones de octubre 2026)
 
 | Problema | Dónde | Corrección |
 |---|---|---|
@@ -118,8 +118,11 @@ Algunos de estos archivos se quitaron en la limpieza (ver arriba); la tabla se d
 | Los contadores de los encoders se leían mientras las interrupciones podían modificarlos, y las interrupciones creaban objetos `String` (memoria dinámica) | `robot_control.ino` | Lectura con las interrupciones desactivadas y signos como `char` |
 | El giroscopio se publicaba sin restar su desviación del cero (el MPU6050 marca algunos °/s estando quieto) | `mpu6050_driver.py` | Mide el cero durante 2 s al arrancar, con el robot quieto, y lo resta |
 | Si la IMU no respondía al arrancar, el driver se cerraba con un error | `mpu6050_driver.py` | Reintenta en silencio hasta que la IMU responde |
+| La IMU se leía byte por byte, en transacciones I2C separadas, mientras el sensor actualiza a 1 kHz: un valor cerca de cero podía saltar ±256 LSB (unos ±0,27 rad/s) | `mpu6050_driver.py` | Una sola lectura de 14 bytes; filtro interno a 44 Hz en lugar de 260 Hz |
+| La interfaz integraba la posición de las ruedas con el reloj del sistema y `ReadLine` podía bloquear el lazo de control con una línea a medias | `bumperbot_interface.cpp` | Integra con el periodo de ros2_control y lee solo los bytes ya recibidos |
+| Faltaban dependencias en `package.xml` (solo se notaba al compilar paquetes sueltos) | `bumperbot_description`, `bumperbot_firmware` | Agregadas |
 | El bloqueo por atasco del gemelo usaba el mismo lock de `twist_mux` que `safety_stop`, así que uno podía liberar al otro | `anomaly_detector.py`, `twist_mux_locks.yaml` | Lock propio, `anomaly_stop` |
 
-`robot_control_inverted.ino` se eliminó: además de cambiar los lados invertía el sentido de motores y encoders, y con la interfaz corregida ya no hace falta. El único firmware es `robot_control.ino`.
+`robot_control_inverted.ino` se eliminó: además de cambiar los lados invertía el sentido de motores y encoders, y con la interfaz corregida ya no hace falta. El único firmware es `robot_control.ino`. Si el robot estaba cableado para el sketch invertido, con el actual puede andar hacia atrás aunque la odometría parezca correcta; el README explica cómo comprobarlo (paso 4 de "Uso con el robot real").
 
 Los planificadores y controladores del curso (`DijkstraPlanner`, `AStarPlanner`, `PDMotionPlanner`, `PurePursuit`) tenían errores conocidos, pero no se corrigieron porque Nav2 nunca los usaba: se eliminaron del repositorio junto con el resto del código que el sistema no ejecuta (sección 1).

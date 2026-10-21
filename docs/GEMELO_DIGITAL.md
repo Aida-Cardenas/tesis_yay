@@ -64,7 +64,7 @@ G(s) = K · e^(−L·s) / (τ·s + 1)
 ros2 run bumperbot_digital_twin twin_calibrate dynamics ~/twin_logs/twin_*_E1_*.csv ~/twin_logs/twin_*_E3_*.csv -o modelo_gemelo.yaml
 ```
 
-Genera el YAML con `K`, `τ`, `L` y `R²` de cada canal y una gráfica del ajuste. Con `use_twin_model:=true twin_model_file:=modelo_gemelo.yaml` (o el panel) el puente filtra los comandos que manda al gemelo con ese modelo, así que el gemelo reproduce la respuesta del robot real aun sin corrección.
+Genera el YAML con `K`, `τ`, `L` y `R²` de cada canal y una gráfica del ajuste. El `R²` es el de la respuesta simulada: el modelo recibe solo los comandos y se compara su salida con la velocidad medida en toda la corrida. El `R²` de un paso (`r2_step`, predecir cada muestra a partir de la anterior medida) también se guarda, pero no sirve para juzgar el ajuste porque da cerca de 0,999 siempre que el periodo de muestreo es mucho menor que `τ`. Si los registros se grabaron con `feedforward_source: odom`, la entrada registrada es la misma velocidad medida y la calibración se niega a ajustar (daría K = 1 y τ = 0). Con `use_twin_model:=true twin_model_file:=modelo_gemelo.yaml` (o el panel) el puente filtra los comandos que manda al gemelo con ese modelo, así que el gemelo reproduce la respuesta del robot real aun sin corrección.
 
 **Calibración de ruedas.** Si la odometría del robot real no coincide con lo medido con cinta métrica:
 
@@ -88,7 +88,7 @@ Calcula `wheel_radius_multiplier` y `wheel_separation_multiplier` de `diff_drive
 | `latencia_alta` (puente) | RTT por encima de `latency_alert_ms` | Wi-Fi saturado |
 | `perdida_datos` (puente) | dejan de llegar datos de un robot | robot apagado, red caída |
 
-Los eventos (`bumperbot_msgs/TwinAnomaly`, con inicio y fin) se publican en `/digital_twin/events` en los dos dominios, aparecen en el panel y en RViz y quedan en `twin_<fecha>_<tag>_eventos.csv`. Con `lock_on_stall:=true` el detector además bloquea el robot (lock `anomaly_stop` de twist_mux, distinto del de `safety_stop` para que uno no libere al otro) cuando detecta un atasco: lo mantiene bloqueado `lock_hold_time` (3 s), lo libera para reintentar y, si el atasco sigue `lock_retry_time` (1,5 s) después, lo vuelve a bloquear. Mientras está bloqueado, el detector se congela para no registrar un falso "fin del atasco".
+Los eventos (`bumperbot_msgs/TwinAnomaly`, con inicio y fin) se publican en `/digital_twin/events` en los dos dominios, aparecen en el panel y en RViz y quedan en `twin_<fecha>_<tag>_eventos.csv`. Con `lock_on_stall:=true` el detector además bloquea el robot (lock `anomaly_stop` de twist_mux, distinto del de `safety_stop` para que uno no libere al otro) cuando detecta un atasco: lo mantiene bloqueado `lock_hold_time` (3 s), lo libera para reintentar y, si el atasco sigue `lock_retry_time` (1,5 s) después, lo vuelve a bloquear. Mientras está bloqueado, el detector se congela para no registrar un falso "fin del atasco". El lock de twist_mux no tiene tiempo de espera: si el detector se cae con el bloqueo puesto, el robot queda bloqueado (falla segura) hasta reiniciar el detector o publicar `false` en `/anomaly_stop`. Con pérdida de paquetes emulada (`net_loss`) se puede perder un evento de "fin", y la anomalía queda marcada como activa en el panel hasta el siguiente evento de ese tipo; no afecta los registros del robot.
 
 ## 5. Red degradada y compensación de latencia
 
@@ -125,7 +125,7 @@ Lee un protocolo YAML (`config/protocolo_real.yaml`, `protocolo_simulacion.yaml`
 
 `protocolo_real` cubre toda la Prueba 5: E1–E6 (corrección, espejo, ambos sentidos), calibración, E7 (gemelo calibrado), L100/L250 con y sin compensación (y con el robot real como seguidor), TUNE (sintonización con el modelo de CAL) con G0T y L250RT para validarla, A1/A2 (atasco y empujón provocados a mano).
 
-Informe de varias carpetas de registros: `ros2 run bumperbot_digital_twin twin_report ~/twin_logs/*.csv -o informe`.
+Informe de varias carpetas de registros: `ros2 run bumperbot_digital_twin twin_report ~/twin_logs/*.csv -p protocolo_real -o informe`. Sin `-p` no hay comparaciones ni gráfica de latencia, porque es el protocolo el que dice qué experimentos se pueden comparar. Todas las comparaciones y la gráfica usan `rmse_real`, el error real entre los dos robots en el mismo instante; el `rmse` compensado es el que la propia corrección lleva a cero y favorecería a la compensación por construcción. Cada corrida cierra su registro al terminar, así que el reposicionamiento del robot entre corridas no entra en las métricas.
 
 ## 9. Navegación con vista previa
 
@@ -250,8 +250,8 @@ Análisis de una corrida: `ros2 run bumperbot_digital_twin analyze_twin_log ~/tw
 4. El protocolo `protocolo_ci` completo con `twin_experiment --auto`: robot "real" más lento y con retardo, calibración automática, red de 200 y 300 ms con y sin compensación, y sintonización automática de ganancias.
 5. Navegación con vista previa con los navegadores de mentira: cuatro metas aprobadas y ejecutadas, una rechazada por pasar cerca de la pared y otra fuera del recinto.
 6. El panel dibujado sin pantalla.
-7. El robot real completo con hardware simulado (ros2_control mock) + EKF + Nav2 + detector + medidor de odometría, y el gemelo siguiéndolo.
-8. El gemelo en Gazebo sin ventana, en el recinto, siguiendo a un robot real de mentira, y una meta de navegación con vista previa usando Nav2 y AMCL del gemelo (experimental).
+7. El robot real completo con hardware simulado (ros2_control mock) + EKF + Nav2 + detector + medidor de odometría, y el gemelo siguiéndolo. Cada nodo de Nav2 debe quedar en `active [3]`; como el hardware simulado no tiene LiDAR, se publica un `map → odom` fijo para que AMCL no haga falta.
+8. El gemelo en Gazebo sin ventana, en el recinto, siguiendo a un robot real de mentira, y una meta de navegación con vista previa usando Nav2 y AMCL del gemelo. Comprueba además que el LiDAR de Gazebo publica en `laser_link`.
 
 Resultados de la corrida automática del 4 de octubre de 2026 (todas las pruebas aprobadas; todo simulado, en un solo computador):
 

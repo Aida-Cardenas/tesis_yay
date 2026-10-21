@@ -133,14 +133,16 @@ class FakeRobot(Node):
             cmd.twist.angular.z = w_cmd
             self.cmd_pub.publish(cmd)
 
-        self.delayed.append((now, v_cmd, w_cmd))
-        while self.delayed and self.delayed[0][0] <= now - self.cmd_delay:
-            self.applied = self.delayed.popleft()[1:]
+        # The speed is advanced with the command that was acting during the last
+        # interval, and only then is the new one queued, so a command takes effect
+        # exactly cmd_delay seconds after it was issued (not one step earlier).
         applied = self.applied
-
         alpha = 1.0 if self.tau <= 0 else min(1.0, dt / self.tau)
         self.v += alpha * (self.linear_gain * applied[0] - self.v)
         self.w += alpha * (self.angular_gain * applied[1] - self.w)
+        self.delayed.append((now, v_cmd, w_cmd))
+        while self.delayed and self.delayed[0][0] <= now - self.cmd_delay + 1e-9:
+            self.applied = self.delayed.popleft()[1:]
         noise = (lambda: self.rng.gauss(0.0, self.noise_std)) if self.noise_std > 0 else (lambda: 0.0)
         wheel_v, wheel_w = self.v + noise(), self.w + noise()
         true_v, true_w = wheel_v, wheel_w

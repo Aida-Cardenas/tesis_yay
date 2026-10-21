@@ -15,8 +15,11 @@ experiments:
   - {name: M, description: Solo copia comandos, feedback: false}
   - {name: CAL, calibrate_from: [M]}
   - {name: MC, description: Solo copia comandos con gemelo calibrado, feedback: false, twin_model: true}
-  - {name: D, description: 200 ms sin compensación, net_delay_ms: 200}
-  - {name: DC, description: 200 ms con compensación, net_delay_ms: 200, compensation: true}
+  # D y DC usan el gemelo calibrado para que solo difieran en la compensación: con el
+  # gemelo sin calibrar (más rápido que el real) su adelanto tapa parte del retraso
+  # de la red y el error real casi no cambia.
+  - {name: D, description: 200 ms sin compensación (gemelo calibrado), net_delay_ms: 200, twin_model: true}
+  - {name: DC, description: 200 ms con compensación (gemelo calibrado), net_delay_ms: 200, twin_model: true, compensation: true}
   - {name: R, description: Real sigue al gemelo con 300 ms, leader: twin, net_delay_ms: 300}
   - {name: RC, description: Real sigue al gemelo con 300 ms y predictor de Smith, leader: twin, net_delay_ms: 300, compensation: true}
   - {name: TUNE, tune: {follower: [real], delay_ms: [300], patterns: [square]}}

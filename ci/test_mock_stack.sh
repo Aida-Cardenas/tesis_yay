@@ -35,7 +35,11 @@ setsid ros2 launch bumperbot_digital_twin real_side.launch.py use_mock_hardware:
 PID=$!
 sleep 30
 
-check "controladores activos" bash -c "ros2 control list_controllers | grep bumperbot_controller | grep -w active && ros2 control list_controllers | grep joint_state_broadcaster | grep -w active"
+# list_controllers colorea el estado; se quitan los códigos ANSI antes de buscar
+# la palabra "active" (que así no coincide con "inactive").
+controllers() { ros2 control list_controllers | sed 's/\x1b\[[0-9;]*m//g'; }
+export -f controllers
+check "controladores activos" bash -c "controllers | grep bumperbot_controller | grep -w active && controllers | grep joint_state_broadcaster | grep -w active"
 check "enable_odom_tf false con EKF" bash -c "ros2 param get /bumperbot_controller enable_odom_tf | grep -i false"
 check "calibración aplicada junto con el EKF" bash -c "ros2 param get /bumperbot_controller wheel_separation_multiplier | grep 1.02"
 check "EKF publica odometry filtered" bash -c "ros2 topic echo --once /odometry/filtered > /dev/null"
