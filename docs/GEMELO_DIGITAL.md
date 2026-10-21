@@ -58,7 +58,7 @@ El gemelo en Gazebo es "ideal": acelera al instante y avanza exactamente lo que 
 G(s) = K · e^(−L·s) / (τ·s + 1)
 ```
 
-`K` es la ganancia (cuánto de lo pedido se logra), `τ` la constante de tiempo (qué tan rápido responde) y `L` el retardo. Se ajusta por mínimos cuadrados (`y[k+1] = a·y[k] + b·u[k−d]`, probando cada retardo `d`) sobre los registros del puente en los que el robot real es el líder: el comando del líder es la entrada y la velocidad medida por los encoders, la salida.
+`K` es la ganancia (cuánto de lo pedido se logra), `τ` la constante de tiempo (qué tan rápido responde) y `L` el retardo. Se ajusta por mínimos cuadrados (`y[k+1] = a·y[k] + b1·u[k−d] + b2·u[k−d−1]`, probando cada retardo entero `d` y quedándose con el de menor error; `b1` y `b2` dan la parte del retardo que cae entre dos muestras, así que `L` no queda redondeado al periodo del registro) sobre los registros del puente en los que el robot real es el líder: el comando del líder es la entrada y la velocidad medida por los encoders, la salida.
 
 ```bash
 ros2 run bumperbot_digital_twin twin_calibrate dynamics ~/twin_logs/twin_*_E1_*.csv ~/twin_logs/twin_*_E3_*.csv -o modelo_gemelo.yaml
