@@ -101,10 +101,21 @@ def latency_series(table, protocol=None):
     return {"metric": "rmse_real", "pattern": pattern, "series": series}
 
 
+MIN_RUNS_FOR_TEST = 5
+
+
+def _clean(x):
+    x = np.asarray(x, float)
+    return x[np.isfinite(x)]
+
+
 def welch_t(a, b):
-    """Prueba t de Welch de dos colas. Devuelve (t, gl, p)."""
-    a, b = np.asarray(a, float), np.asarray(b, float)
-    a, b = a[np.isfinite(a)], b[np.isfinite(b)]
+    """Prueba t de Welch de dos colas. Devuelve (t, gl, p).
+
+    Sin scipy no se informa p: la aproximación normal da valores demasiado
+    pequeños con los pocos grados de libertad de estas comparaciones.
+    """
+    a, b = _clean(a), _clean(b)
     if a.size < 2 or b.size < 2:
         return math.nan, math.nan, math.nan
     va, vb = a.var(ddof=1) / a.size, b.var(ddof=1) / b.size
@@ -114,10 +125,44 @@ def welch_t(a, b):
     df = (va + vb) ** 2 / (va ** 2 / (a.size - 1) + vb ** 2 / (b.size - 1))
     try:
         from scipy import stats as st
-        p = float(2 * st.t.sf(abs(t), df))
-    except Exception:
-        p = math.erfc(abs(t) / math.sqrt(2))
-    return float(t), float(df), p
+    except ImportError:
+        return float(t), float(df), math.nan
+    return float(t), float(df), float(2 * st.t.sf(abs(t), df))
+
+
+def welch_ci(a, b, level=0.95):
+    """Diferencia de medias (a − b) y su intervalo de confianza de Welch."""
+    a, b = _clean(a), _clean(b)
+    if a.size < 2 or b.size < 2:
+        return math.nan, math.nan, math.nan
+    diff = float(a.mean() - b.mean())
+    va, vb = a.var(ddof=1) / a.size, b.var(ddof=1) / b.size
+    se = math.sqrt(va + vb)
+    if se == 0:
+        return diff, diff, diff
+    df = (va + vb) ** 2 / (va ** 2 / (a.size - 1) + vb ** 2 / (b.size - 1))
+    try:
+        from scipy import stats as st
+    except ImportError:
+        return diff, math.nan, math.nan
+    half = float(st.t.ppf(0.5 + level / 2, df)) * se
+    return diff, diff - half, diff + half
+
+
+def compare(a, b):
+    """Resumen de una comparación entre dos grupos de corridas."""
+    na, nb = int(_clean(a).size), int(_clean(b).size)
+    t, df, p = welch_t(a, b)
+    diff, lo, hi = welch_ci(a, b)
+    enough = na >= MIN_RUNS_FOR_TEST and nb >= MIN_RUNS_FOR_TEST
+    if not enough:
+        verdict = f"no concluyente (n < {MIN_RUNS_FOR_TEST})"
+    elif not math.isfinite(p):
+        verdict = "sin p"
+    else:
+        verdict = "sí" if p < 0.05 else "no"
+    return {"n_a": na, "n_b": nb, "t": t, "gl": df, "p": p, "diferencia": diff, "ic95": [lo, hi],
+            "concluyente": enough and math.isfinite(p), "significativa": verdict == "sí", "veredicto": verdict}
 
 
 def metric(summary, key):
@@ -215,8 +260,9 @@ def build_report(csv_paths, out_dir, protocol=None, plots=True):
     results_cmp = []
     if comparisons:
         lines += ["", "## Comparaciones (prueba t de Welch)", "",
-                  "| A | B | Métrica | A | B | Diferencia | t | gl | p | ¿Significativa (α=0,05)? |",
-                  "|---|---|---|---|---|---|---|---|---|---|"]
+                  "| A | B | Métrica | A | B | Diferencia A − B | IC 95 % | n A/B | t | gl | p | ¿Significativa (α=0,05)? |",
+                  "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+        few = False
         for pair in comparisons:
             a_name, b_name = pair[0], pair[1]
             key = pair[2] if len(pair) > 2 else "rmse"
@@ -224,14 +270,22 @@ def build_report(csv_paths, out_dir, protocol=None, plots=True):
                 continue
             a = [metric(r, key) for r in groups[a_name]]
             b = [metric(r, key) for r in groups[b_name]]
-            t, df, p = welch_t(a, b)
+            c = compare(a, b)
             ma, mb = np.nanmean(a), np.nanmean(b)
-            sig = "sí" if math.isfinite(p) and p < 0.05 else "no"
-            results_cmp.append({"a": a_name, "b": b_name, "metrica": key, "media_a": ma, "media_b": mb,
-                                "t": t, "gl": df, "p": p, "significativa": sig == "sí"})
+            few = few or c["veredicto"].startswith("no concluyente")
+            results_cmp.append({"a": a_name, "b": b_name, "metrica": key, "media_a": ma, "media_b": mb, **c})
             name, scale, unit = METRICS[key]
+            lo, hi = c["ic95"]
+            ci = f"[{lo * scale:+.2f}; {hi * scale:+.2f}] {unit}" if math.isfinite(lo) else "—"
             lines.append(f"| {a_name} | {b_name} | {name} | {ma * scale:.2f} {unit} | {mb * scale:.2f} {unit} "
-                         f"| {(ma - mb) * scale:+.2f} {unit} | {t:.2f} | {df:.1f} | {p:.4f} | {sig} |")
+                         f"| {c['diferencia'] * scale:+.2f} {unit} | {ci} | {c['n_a']}/{c['n_b']} | {c['t']:.2f} "
+                         f"| {c['gl']:.1f} | {c['p']:.4f} | {c['veredicto']} |")
+        lines += ["", "Si el intervalo de confianza de la diferencia contiene el cero, los datos no muestran "
+                  "una diferencia clara entre A y B."]
+        if few:
+            lines += [f"Las comparaciones con menos de {MIN_RUNS_FOR_TEST} corridas por grupo se marcan como no "
+                      "concluyentes: con tan pocas corridas, el valor de p depende más de cuánto se parecieron "
+                      "esas corridas que del efecto."]
 
     sweep = latency_series(table, protocol)
     if plots and sweep["series"]:

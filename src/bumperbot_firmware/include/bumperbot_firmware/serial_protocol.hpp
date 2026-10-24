@@ -33,6 +33,37 @@ std::string format_wheel_command(double right, double left);
 // el búfer pasa de `max_buffer` sin un '\n' se vacía (llegó basura).
 bool take_last_line(std::string & buffer, std::string & line, size_t max_buffer = 256);
 
+// Velocidad y posición de cada rueda a partir de las lecturas del Arduino.
+// El Arduino informa cada 100 ms y el lazo de control corre más rápido, así que
+// entre lecturas se mantiene la última velocidad. Si pasa más de `timeout_s` sin
+// una lectura válida (Arduino reiniciado, cable suelto, solo basura), las
+// velocidades pasan a cero y la posición deja de avanzar: sin datos, la
+// odometría se detiene en lugar de inventar movimiento.
+class WheelIntegrator
+{
+public:
+  explicit WheelIntegrator(double timeout_s = 0.3);
+  void reset();
+  void on_reading(double now_s, const WheelReading & reading);
+  // Avanza dt segundos. Devuelve true si los datos están vencidos.
+  bool advance(double now_s, double dt);
+  bool stale(double now_s) const;
+  double seconds_since_reading(double now_s) const;
+  double right_velocity() const { return right_velocity_; }
+  double left_velocity() const { return left_velocity_; }
+  double right_position() const { return right_position_; }
+  double left_position() const { return left_position_; }
+
+private:
+  double timeout_s_;
+  double last_reading_s_;
+  bool has_reading_;
+  double right_velocity_ = 0.0;
+  double left_velocity_ = 0.0;
+  double right_position_ = 0.0;
+  double left_position_ = 0.0;
+};
+
 // Posición de cada rueda en la lista de articulaciones de ros2_control, buscando
 // por nombre: primero el nombre exacto y, si no está, cualquiera que contenga
 // "right" o "left". Devuelve -1 si no la encuentra.

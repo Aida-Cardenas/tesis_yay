@@ -66,3 +66,10 @@ def test_each_run_closes_its_log_after_settling(tmp_path, monkeypatch):
             "laps": 1, "pause": 0.5, "settle": 2.0}
     assert r.run_experiment(step, 1)
     assert calls[0].get("new_log") and calls[1].get("play") and calls[-1] == {"close_log": True}
+
+
+def test_calibration_closes_the_log_instead_of_opening_one(tmp_path):
+    r = make_runner(tmp_path)
+    r.calibrate({"calibrate_from": ["E1"]})
+    assert r.calls and r.calls[0] == {"close_log": True}
+    assert not any(c.get("new_log") for c in r.calls)

@@ -117,6 +117,8 @@ CallbackReturn BumperbotInterface::on_activate(const rclcpp_lifecycle::State &)
   std::fill(position_states_.begin(), position_states_.end(), 0.0);
   std::fill(velocity_states_.begin(), velocity_states_.end(), 0.0);
   rx_buffer_.clear();
+  wheels_.reset();
+  stale_reported_ = false;
 
   try
   {
@@ -188,6 +190,7 @@ hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
                          "Could not read from %s", port_.c_str());
   }
 
+  const double now = clock_->now().seconds();
   std::string message;
   if (take_last_line(rx_buffer_, message))
   {
@@ -197,27 +200,30 @@ hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
       RCLCPP_WARN_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 2000,
                            "Ignored malformed data from the Arduino: '%s'", message.c_str());
     }
-    if (reading.has_right)
-    {
-      velocity_states_.at(right_index_) = reading.right;
-    }
-    if (reading.has_left)
-    {
-      velocity_states_.at(left_index_) = reading.left;
-    }
+    wheels_.on_reading(now, reading);
   }
 
   // The Arduino reports every 100 ms and the loop runs faster, so the last
   // measured speed is held and integrated with the controller period (not the
-  // wall clock, which can jump).
-  const double dt = period.seconds();
-  if (dt > 0.0 && dt < 1.0)
+  // wall clock, which can jump). If no valid reading arrives for 0.3 s the
+  // speeds drop to zero and the wheels stop moving in the odometry.
+  const bool stale = wheels_.advance(now, period.seconds());
+  if (stale)
   {
-    for (size_t i = 0; i < position_states_.size(); ++i)
-    {
-      position_states_[i] += velocity_states_[i] * dt;
-    }
+    RCLCPP_WARN_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 2000,
+                         "No data from the Arduino for %.1f s: wheel speeds set to zero",
+                         wheels_.seconds_since_reading(now));
+    stale_reported_ = true;
   }
+  else if (stale_reported_)
+  {
+    RCLCPP_INFO(rclcpp::get_logger("BumperbotInterface"), "Arduino data is back");
+    stale_reported_ = false;
+  }
+  velocity_states_.at(right_index_) = wheels_.right_velocity();
+  velocity_states_.at(left_index_) = wheels_.left_velocity();
+  position_states_.at(right_index_) = wheels_.right_position();
+  position_states_.at(left_index_) = wheels_.left_position();
   return hardware_interface::return_type::OK;
 }
 

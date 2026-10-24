@@ -4,7 +4,7 @@
 #   ros2 run bumperbot_digital_twin twin_experiment protocolo_simulacion --auto
 name: protocolo_simulacion
 defaults:
-  repetitions: 2
+  repetitions: 5
   leader: real
   linear_speed: 0.15
   angular_speed: 0.6

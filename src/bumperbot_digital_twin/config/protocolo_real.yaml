@@ -1,6 +1,8 @@
 # Protocolo de la Prueba 5 con el robot físico.
 #   ros2 run bumperbot_digital_twin twin_experiment protocolo_real
 # Entre corridas el programa pide colocar el robot en la marca de salida.
+# Los experimentos que entran en una prueba t de Welch llevan 5 repeticiones:
+# con 2 por grupo, el valor de p depende más del azar que del efecto.
 name: protocolo_real
 defaults:
   repetitions: 3
@@ -14,16 +16,20 @@ defaults:
 experiments:
   - name: E1
     description: Línea recta de 1 m, el gemelo sigue al robot con corrección
+    repetitions: 5
     pattern: line
   - name: E2
     description: Línea recta de 1 m, el gemelo solo copia comandos
+    repetitions: 5
     pattern: line
     feedback: false
   - name: E3
     description: Cuadrado de 1 m con corrección
+    repetitions: 5
     pattern: square
   - name: E4
     description: Cuadrado de 1 m, solo copia comandos
+    repetitions: 5
     pattern: square
     feedback: false
   - name: E5
@@ -40,6 +46,7 @@ experiments:
 
   - name: E7
     description: Cuadrado de 1 m, solo copia comandos, gemelo calibrado
+    repetitions: 5
     pattern: square
     feedback: false
     twin_model: true
@@ -47,40 +54,40 @@ experiments:
   - name: L100
     description: Red con 100 ms de retardo, sin compensación
     pattern: square
-    repetitions: 2
+    repetitions: 5
     net_delay_ms: 100
     net_jitter_ms: 10
   - name: L100C
     description: Red con 100 ms de retardo, con compensación
     pattern: square
-    repetitions: 2
+    repetitions: 5
     net_delay_ms: 100
     net_jitter_ms: 10
     compensation: true
   - name: L250
     description: Red con 250 ms de retardo, sin compensación
     pattern: square
-    repetitions: 2
+    repetitions: 5
     net_delay_ms: 250
     net_jitter_ms: 20
   - name: L250C
     description: Red con 250 ms de retardo, con compensación
     pattern: square
-    repetitions: 2
+    repetitions: 5
     net_delay_ms: 250
     net_jitter_ms: 20
     compensation: true
   - name: L250R
     description: Red con 250 ms, el robot real sigue al gemelo, sin compensación
     pattern: square
-    repetitions: 2
+    repetitions: 5
     leader: twin
     net_delay_ms: 250
     net_jitter_ms: 20
   - name: L250RC
     description: Red con 250 ms, el robot real sigue al gemelo, con predictor de Smith
     pattern: square
-    repetitions: 2
+    repetitions: 5
     leader: twin
     net_delay_ms: 250
     net_jitter_ms: 20
@@ -94,12 +101,13 @@ experiments:
     output: ganancias.yaml
   - name: G0T
     description: Cuadrado de 1 m con corrección y ganancias sintonizadas
+    repetitions: 5
     pattern: square
     gains: tuned
   - name: L250RT
     description: Red con 250 ms, el robot real sigue al gemelo, ganancias sintonizadas
     pattern: square
-    repetitions: 2
+    repetitions: 5
     leader: twin
     net_delay_ms: 250
     net_jitter_ms: 20

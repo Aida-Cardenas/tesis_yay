@@ -106,6 +106,62 @@ bool take_last_line(std::string & buffer, std::string & line, size_t max_buffer)
   return true;
 }
 
+WheelIntegrator::WheelIntegrator(double timeout_s)
+: timeout_s_(timeout_s), last_reading_s_(0.0), has_reading_(false)
+{
+}
+
+void WheelIntegrator::reset()
+{
+  has_reading_ = false;
+  last_reading_s_ = 0.0;
+  right_velocity_ = left_velocity_ = 0.0;
+  right_position_ = left_position_ = 0.0;
+}
+
+void WheelIntegrator::on_reading(double now_s, const WheelReading & reading)
+{
+  if (!reading.has_right && !reading.has_left)
+  {
+    return;
+  }
+  if (reading.has_right)
+  {
+    right_velocity_ = reading.right;
+  }
+  if (reading.has_left)
+  {
+    left_velocity_ = reading.left;
+  }
+  last_reading_s_ = now_s;
+  has_reading_ = true;
+}
+
+bool WheelIntegrator::stale(double now_s) const
+{
+  return !has_reading_ || now_s - last_reading_s_ > timeout_s_;
+}
+
+double WheelIntegrator::seconds_since_reading(double now_s) const
+{
+  return has_reading_ ? now_s - last_reading_s_ : INFINITY;
+}
+
+bool WheelIntegrator::advance(double now_s, double dt)
+{
+  if (stale(now_s))
+  {
+    right_velocity_ = left_velocity_ = 0.0;
+    return true;
+  }
+  if (dt > 0.0 && dt < 1.0)
+  {
+    right_position_ += right_velocity_ * dt;
+    left_position_ += left_velocity_ * dt;
+  }
+  return false;
+}
+
 int find_wheel_index(const std::vector<std::string> & joint_names, const std::string & side)
 {
   const std::string exact = "wheel_" + side + "_joint";

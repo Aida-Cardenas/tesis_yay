@@ -6,6 +6,7 @@ using bumperbot_firmware::find_wheel_index;
 using bumperbot_firmware::format_wheel_command;
 using bumperbot_firmware::parse_wheel_message;
 using bumperbot_firmware::take_last_line;
+using bumperbot_firmware::WheelIntegrator;
 
 TEST(SerialProtocol, ParsesBothWheels)
 {
@@ -100,4 +101,56 @@ TEST(SerialProtocol, TakeLastLineDropsGarbageWithoutNewline)
   buffer = "\nrp01.00,lp01.00,\n";
   ASSERT_TRUE(take_last_line(buffer, line));
   EXPECT_EQ(line, "rp01.00,lp01.00,");
+}
+
+TEST(WheelIntegrator, HoldsTheLastSpeedBetweenReadings)
+{
+  WheelIntegrator w(0.3);
+  w.on_reading(0.0, parse_wheel_message("rp02.00,ln01.00,"));
+  double t = 0.0;
+  for (int i = 0; i < 10; ++i)
+  {
+    t += 0.01;
+    EXPECT_FALSE(w.advance(t, 0.01));
+  }
+  EXPECT_NEAR(w.right_position(), 0.2, 1e-9);
+  EXPECT_NEAR(w.left_position(), -0.1, 1e-9);
+}
+
+TEST(WheelIntegrator, StopsWhenTheArduinoGoesQuiet)
+{
+  WheelIntegrator w(0.3);
+  w.on_reading(0.0, parse_wheel_message("rp05.00,lp05.00,"));
+  double t = 0.0;
+  bool stale = false;
+  for (int i = 0; i < 150; ++i)
+  {
+    t += 0.01;
+    stale = w.advance(t, 0.01);
+  }
+  EXPECT_TRUE(stale);
+  EXPECT_DOUBLE_EQ(w.right_velocity(), 0.0);
+  EXPECT_DOUBLE_EQ(w.left_velocity(), 0.0);
+  EXPECT_NEAR(w.right_position(), 5.0 * 0.3, 0.06);
+  w.on_reading(t, parse_wheel_message("rp01.00,lp01.00,"));
+  EXPECT_FALSE(w.advance(t + 0.01, 0.01));
+  EXPECT_DOUBLE_EQ(w.right_velocity(), 1.0);
+}
+
+TEST(WheelIntegrator, GarbageDoesNotKeepTheDataAlive)
+{
+  WheelIntegrator w(0.3);
+  w.on_reading(0.0, parse_wheel_message("rp05.00,lp05.00,"));
+  for (int i = 1; i <= 100; ++i)
+  {
+    w.on_reading(i * 0.01, parse_wheel_message("xx,rq,"));
+  }
+  EXPECT_TRUE(w.advance(1.0, 0.01));
+}
+
+TEST(WheelIntegrator, NoMotionBeforeTheFirstReading)
+{
+  WheelIntegrator w(0.3);
+  EXPECT_TRUE(w.advance(0.5, 0.01));
+  EXPECT_DOUBLE_EQ(w.right_position(), 0.0);
 }

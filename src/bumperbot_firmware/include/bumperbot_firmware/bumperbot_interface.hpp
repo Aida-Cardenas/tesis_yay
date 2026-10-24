@@ -4,6 +4,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <hardware_interface/system_interface.hpp>
 #include <libserial/SerialPort.h>
+#include "bumperbot_firmware/serial_protocol.hpp"
 #include <rclcpp_lifecycle/state.hpp>
 #include <rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp>
 
@@ -40,6 +41,8 @@ private:
   std::vector<double> position_states_;
   std::vector<double> velocity_states_;
   std::string rx_buffer_;
+  WheelIntegrator wheels_;
+  bool stale_reported_ = false;
   int right_index_ = 0;
   int left_index_ = 1;
   rclcpp::Clock::SharedPtr clock_ = std::make_shared<rclcpp::Clock>(RCL_STEADY_TIME);

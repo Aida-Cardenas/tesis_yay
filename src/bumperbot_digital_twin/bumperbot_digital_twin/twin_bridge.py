@@ -454,6 +454,7 @@ class TwinBridge:
                 f.close()
         self.csv_file = self.scan_file = self.event_file = None
         self.csv_writer = self.scan_writer = self.event_writer = None
+        self.csv_path = ""
 
     def _new_log(self, tag=None):
         if tag is not None:

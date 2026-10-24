@@ -2,7 +2,8 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, OpaqueFunction, RegisterEventHandler
+from launch.event_handlers import OnShutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -32,10 +33,17 @@ def merge_param_files(paths):
     for path in paths:
         with open(path) as f:
             deep_update(merged, yaml.safe_load(f) or {})
-    path = os.path.join(tempfile.gettempdir(), f"bumperbot_controller_params_{os.getuid()}.yaml")
-    with open(path, "w") as out:
+    fd, path = tempfile.mkstemp(prefix="bumperbot_controller_params_", suffix=".yaml")
+    with os.fdopen(fd, "w") as out:
         yaml.safe_dump(merged, out)
     return path
+
+
+def remove_quietly(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
 
 
 def wheel_controller(context, *args, **kwargs):
@@ -53,7 +61,12 @@ def wheel_controller(context, *args, **kwargs):
     if len(param_files) == 1:
         arguments += ["--param-file", param_files[0]]
     elif len(param_files) > 1:
-        arguments += ["--param-file", merge_param_files(param_files)]
+        merged = merge_param_files(param_files)
+        arguments += ["--param-file", merged]
+        return [
+            Node(package="controller_manager", executable="spawner", arguments=arguments),
+            RegisterEventHandler(OnShutdown(on_shutdown=lambda event, ctx: remove_quietly(merged))),
+        ]
     return [Node(package="controller_manager", executable="spawner", arguments=arguments)]
 
 

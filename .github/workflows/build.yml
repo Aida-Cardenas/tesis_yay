@@ -84,7 +84,11 @@ jobs:
         timeout-minutes: 30
         run: |
           apt-get install -y libegl1 libgl1-mesa-dri mesa-utils > /dev/null
-          bash ci/test_gazebo_twin.sh || { echo "Primer intento fallido, se repite una vez"; bash ci/test_gazebo_twin.sh; }
+          source ci/annotate.sh
+          if ! bash ci/test_gazebo_twin.sh; then
+            annotate warning "Gazebo necesitó un reintento" "El primer intento de la prueba de Gazebo + Nav2 falló y se repitió. Si este aviso aparece seguido, la prueba es inestable y hay que revisarla."
+            bash ci/test_gazebo_twin.sh
+          fi
 
   firmware:
     name: firmware del Arduino (${{ matrix.board }})

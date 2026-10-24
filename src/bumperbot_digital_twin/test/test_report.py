@@ -21,16 +21,19 @@ def test_experiment_name_from_file():
 
 def test_build_report(tmp_path):
     paths = []
-    for rep in range(1, 4):
+    for rep in range(1, 6):
         paths.append(write_run(tmp_path / f"twin_20260101_00000{rep}_A_r{rep}.csv", err=0.01 + rep * 0.001))
         paths.append(write_run(tmp_path / f"twin_20260101_00001{rep}_B_r{rep}.csv", err=0.05 + rep * 0.001,
                                feedback=0))
     protocol = {"experiments": [{"name": "A", "description": "con corrección"}, {"name": "B"}],
                 "comparisons": [["A", "B"]]}
     md, table, cmp = report.build_report([str(p) for p in paths], str(tmp_path / "inf"), protocol, plots=False)
-    assert table["A"]["corridas"] == 3
-    assert table["A"]["rmse"][0] == pytest.approx(0.012, abs=1e-6)
+    assert table["A"]["corridas"] == 5
+    assert table["A"]["rmse"][0] == pytest.approx(0.013, abs=1e-6)
     assert cmp[0]["significativa"] and cmp[0]["p"] < 0.01
+    lo, hi = cmp[0]["ic95"]
+    assert lo < cmp[0]["diferencia"] < hi < 0
+    assert "IC 95 %" in md
     assert "con corrección" in md and (tmp_path / "inf" / "informe.md").exists()
 
 
@@ -147,3 +150,50 @@ def test_untagged_duplicate_log_is_not_an_experiment():
 def test_deduplicated_log_name_keeps_experiment():
     from bumperbot_digital_twin.report import experiment_of
     assert experiment_of("/x/twin_20261001_101010_E3_r1-2.csv") == ("E3", 1)
+
+
+def test_few_runs_are_not_conclusive_even_with_small_p():
+    from bumperbot_digital_twin.report import compare
+    c = compare([0.019, 0.0191], [0.017, 0.0171])
+    assert c["p"] < 0.05
+    assert not c["significativa"] and not c["concluyente"] and c["veredicto"].startswith("no concluyente")
+
+
+def test_welch_interval_matches_scipy():
+    import numpy as np
+    from scipy import stats
+    from bumperbot_digital_twin.report import welch_ci
+    a, b = [0.12, 0.10, 0.11, 0.13, 0.12], [0.08, 0.09, 0.07, 0.08, 0.10]
+    diff, lo, hi = welch_ci(a, b)
+    ref = stats.ttest_ind(a, b, equal_var=False).confidence_interval(0.95)
+    assert diff == pytest.approx(np.mean(a) - np.mean(b))
+    assert (lo, hi) == pytest.approx((ref.low, ref.high), rel=1e-9)
+
+
+def test_welch_gives_no_p_without_scipy(monkeypatch):
+    import builtins
+    from bumperbot_digital_twin.report import welch_t
+    real_import = builtins.__import__
+
+    def no_scipy(name, *args, **kwargs):
+        if name.startswith("scipy"):
+            raise ImportError(name)
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", no_scipy)
+    t, df, p = welch_t([0.1, 0.11, 0.12], [0.2, 0.21, 0.22])
+    assert t < 0 and math.isnan(p)
+
+
+@pytest.mark.parametrize("name", ["protocolo_real", "protocolo_simulacion"])
+def test_compared_experiments_have_enough_runs(name):
+    import os
+    import yaml
+    from bumperbot_digital_twin.report import MIN_RUNS_FOR_TEST
+    path = os.path.join(os.path.dirname(__file__), "..", "config", name + ".yaml")
+    protocol = yaml.safe_load(open(path))
+    default = protocol["defaults"].get("repetitions", 1)
+    steps = {s["name"]: s for s in protocol["experiments"] if "name" in s}
+    for pair in protocol["comparisons"]:
+        for exp in pair[:2]:
+            assert steps[exp].get("repetitions", default) >= MIN_RUNS_FOR_TEST, (name, exp)
