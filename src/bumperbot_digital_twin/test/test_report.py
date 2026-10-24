@@ -159,15 +159,14 @@ def test_few_runs_are_not_conclusive_even_with_small_p():
     assert not c["significativa"] and not c["concluyente"] and c["veredicto"].startswith("no concluyente")
 
 
-def test_welch_interval_matches_scipy():
+# Valores de referencia de scipy.stats.ttest_ind(a, b, equal_var=False).confidence_interval(0.95) (scipy 1.17)
+def test_welch_interval_matches_reference():
     import numpy as np
-    from scipy import stats
     from bumperbot_digital_twin.report import welch_ci
     a, b = [0.12, 0.10, 0.11, 0.13, 0.12], [0.08, 0.09, 0.07, 0.08, 0.10]
     diff, lo, hi = welch_ci(a, b)
-    ref = stats.ttest_ind(a, b, equal_var=False).confidence_interval(0.95)
     assert diff == pytest.approx(np.mean(a) - np.mean(b))
-    assert (lo, hi) == pytest.approx((ref.low, ref.high), rel=1e-9)
+    assert (lo, hi) == pytest.approx((0.015371167698178787, 0.048628832301821245), rel=1e-9)
 
 
 def test_welch_gives_no_p_without_scipy(monkeypatch):

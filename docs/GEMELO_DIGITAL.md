@@ -121,7 +121,7 @@ Muestra en vivo líder, error, RTT, retardo, red, LiDAR y anomalías, con gráfi
 ros2 run bumperbot_digital_twin twin_experiment protocolo_real
 ```
 
-Lee un protocolo YAML (`config/protocolo_real.yaml`, `protocolo_simulacion.yaml`), y para cada experimento y repetición configura el puente, realinea, abre un registro `<experimento>_r<n>`, hace el recorrido y espera. Entre corridas pide colocar el robot en la marca (con `--auto` no pregunta). A mitad del protocolo puede calibrar el gemelo con las corridas anteriores (`calibrate_from`). Al final genera `informe.md` / `informe.json`: media ± desviación por experimento, comparaciones con prueba t de Welch (¿la mejora es significativa?) y la gráfica de error contra latencia.
+Lee un protocolo YAML (`config/protocolo_real.yaml`, `protocolo_simulacion.yaml`), y para cada experimento y repetición configura el puente, realinea, abre un registro `<experimento>_r<n>`, hace el recorrido y espera. Entre corridas pide colocar el robot en la marca (con `--auto` no pregunta). A mitad del protocolo puede calibrar el gemelo con las corridas anteriores (`calibrate_from`). Al final genera `informe.md` / `informe.json`: media ± desviación por experimento, comparaciones con prueba t de Welch, con la diferencia entre condiciones y su intervalo de confianza del 95 %, y la gráfica de error contra latencia. Una comparación con menos de 5 corridas por grupo se marca como no concluyente: con 2 corridas, el mismo escenario de CI dio p = 0,18 y p = 0,005. Por eso `protocolo_real` y `protocolo_simulacion` repiten 5 veces cada experimento que entra en una comparación.
 
 `protocolo_real` cubre toda la Prueba 5: E1–E6 (corrección, espejo, ambos sentidos), calibración, E7 (gemelo calibrado), L100/L250 con y sin compensación (y con el robot real como seguidor), TUNE (sintonización con el modelo de CAL) con G0T y L250RT para validarla, A1/A2 (atasco y empujón provocados a mano).
 
@@ -267,19 +267,19 @@ Resultados de la corrida automática del 20 de octubre de 2026 (todas las prueba
 
 **Protocolo completo** (`protocolo_ci` con `twin_experiment --auto`, 2 repeticiones; el robot "real" de mentira tiene K = 0,85, τ = 0,3 s y 0,1 s de retardo, y el gemelo responde casi ideal). Todas las filas usan el error real entre los dos robots en el mismo instante (`rmse_real`), salvo M y MC, que no tienen retardo de red y en las que los dos errores coinciden:
 
-| Experimento | RMSE de posición | Reducción | Prueba t de Welch |
+| Experimento | RMSE de posición | Reducción | p de Welch (n = 2: indicativo) |
 |---|---|---|---|
 | M: solo copia comandos | 25,9 cm | | |
 | MC: solo copia comandos, gemelo calibrado | 2,6 cm | −90 % | p = 0,007 |
 | D: red de 200 ms, sin compensación | 2,0 cm | | |
-| DC: red de 200 ms, con compensación | 1,8 cm | −10 % | p = 0,005 (0,18 en la corrida anterior) |
+| DC: red de 200 ms, con compensación | 1,8 cm | −10 % | no concluyente |
 | R: el real sigue al gemelo, red de 300 ms | 24,5 cm | | |
 | RC: lo mismo con predictor de Smith | 14,0 cm | −43 % | p = 0,015 |
 | RT: lo mismo con ganancias sintonizadas por el gemelo (kx 0,4 / ky 0,5 / kθ 0,3) | 12,5 cm | −49 % | p = 0,009 |
 
-El gemelo calibrado y la compensación con el robot real como seguidor dan mejoras grandes y significativas. Con el gemelo como seguidor (D/DC), la compensación casi no cambia el error real. El RMSE compensado, que es el que mide el propio puente, sí baja de 3,4 a 1,9 cm, pero eso es la corrección alcanzando la pose extrapolada, no al robot real. Con dos repeticiones, el valor de p de esa comparación cambió de una corrida a otra; la mejora del error real es pequeña. La sintonización sola logra lo mismo que el predictor de Smith: con 300 ms de retardo, lo mejor es corregir con suavidad.
+El gemelo calibrado y la compensación con el robot real como seguidor dan mejoras grandes (p < 0,05, aunque con 2 repeticiones el valor de p es solo indicativo; por eso los protocolos real y de simulación usan 5). Con el gemelo como seguidor (D/DC), la compensación casi no cambia el error real. El RMSE compensado, que es el que mide el propio puente, sí baja de 3,4 a 1,9 cm, pero eso es la corrección alcanzando la pose extrapolada, no al robot real. Con dos repeticiones, el valor de p de esa comparación cambió de 0,18 a 0,005 entre dos corridas idénticas, así que el resultado no es concluyente; la mejora del error real, si existe, es pequeña. La sintonización sola logra lo mismo que el predictor de Smith: con 300 ms de retardo, lo mejor es corregir con suavidad.
 
-El modelo identificado a partir de M fue K = 0,85, τ = 0,31 s y L = 0,088 s en la velocidad lineal (R² de la respuesta simulada = 0,998), y K = 0,84, τ = 0,28 s y L = 0,106 s en la angular (R² = 0,999), cercano a los valores con que se configuró el robot de mentira. La diferencia de unos 10 ms con el retardo configurado viene de que el registro del puente muestrea a 20 Hz y ve cada cambio de comando con hasta 50 ms de atraso.
+El modelo identificado a partir de M fue K = 0,85, τ = 0,31 s y L = 0,088 s en la velocidad lineal (R² de la respuesta simulada = 0,998), y K = 0,84, τ = 0,28 s y L = 0,106 s en la angular (R² = 0,999), cercano a los valores con que se configuró el robot de mentira. Una diferencia queda por debajo y la otra por encima de 0,1 s, lo que se parece más a ruido de cuantización (el robot de mentira avanza con pasos de Euler a 50 Hz y el registro muestrea a 20 Hz) que a un atraso sistemático.
 
 **Navegación con vista previa** (navegadores de mentira, recinto `arena`):
 
