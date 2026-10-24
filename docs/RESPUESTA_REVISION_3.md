@@ -29,4 +29,15 @@ Qué se hizo con cada punto de la tercera revisión (21 de octubre de 2026). Las
 
 ## Resultados de CI
 
-{{CI}}
+Corrida del 24 de octubre de 2026 (commit `2318800`): todas las pruebas aprobadas. Gazebo con Nav2 pasó al primer intento (no apareció el aviso de reintento) y los siete nodos de Nav2 quedaron en `active [3]` con el robot simulado (mock).
+
+| Comparación en `protocolo_ci` (error real, n = 2: no concluyente por diseño) | Sin | Con | p |
+|---|---|---|---|
+| M vs MC: gemelo calibrado | 23,9 cm | 2,4 cm | 0,003 |
+| D vs DC: compensación, gemelo seguidor, 200 ms | 2,0 cm | 1,7 cm | 0,127 |
+| R vs RC: predictor de Smith, real seguidor, 300 ms | 24,6 cm | 14,1 cm | 0,045 |
+| R vs RT: ganancias sintonizadas, real seguidor, 300 ms | 24,6 cm | 12,8 cm | 0,031 |
+
+En la corrida anterior del mismo día, D vs DC dio p = 0,173, en línea con lo de R3-M2: con 2 corridas, el p de una diferencia pequeña salta de una corrida a otra.
+
+Retardo identificado en las tres últimas corridas de CI, con 0,1 s configurados: lineal 0,088, 0,106 y 0,110 s; angular 0,106, 0,094 y 0,091 s. Quedan a ambos lados de 0,1 s, lo que apoya leer la diferencia como ruido de cuantización y no como un atraso sistemático (R3-L2).
