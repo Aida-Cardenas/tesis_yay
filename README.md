@@ -105,6 +105,7 @@ El único mundo es `arena`, el recinto rectangular de pruebas que también se ar
 | `use_rviz` | `true` | Solo simulación: abrir RViz |
 | `gui` | `true` | Solo simulación: `false` corre Gazebo sin ventana |
 | `use_mock_hardware` | `false` | Solo robot real: sin Arduino, ruedas simuladas por ros2_control (para probar) |
+| `use_lidar` | `true` | Solo robot real: `false` no arranca el driver del RPLidar (pruebas en la mesa sin el sensor) |
 | `bt_xml` | `bumperbot_navigation/behavior_tree/simple_navigation_w_replanning_and_recovery.xml` | Behavior tree de Nav2 (ruta completa al archivo) |
 | `arduino_port` | `/dev/arduino` | Puerto serie del Arduino (solo robot real) |
 

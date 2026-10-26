@@ -45,6 +45,12 @@ def generate_launch_description():
         description="Map for AMCL, in bumperbot_mapping/maps/<map_name>/map.yaml"
     )
 
+    use_lidar_arg = DeclareLaunchArgument(
+        "use_lidar",
+        default_value="true",
+        description="false: do not start the RPLidar driver (bench tests without the sensor)"
+    )
+
     use_safety_stop_arg = DeclareLaunchArgument(
         "use_safety_stop",
         default_value="false",
@@ -77,6 +83,7 @@ def generate_launch_description():
             # enumerating, cable loose); it is started again instead.
             respawn=True,
             respawn_delay=3.0,
+            condition=IfCondition(LaunchConfiguration("use_lidar")),
     )
     
     controller = IncludeLaunchDescription(
@@ -171,6 +178,7 @@ def generate_launch_description():
         arduino_port_arg,
         use_ekf_arg,
         use_safety_stop_arg,
+        use_lidar_arg,
         map_name_arg,
         bt_xml_arg,
         hardware_interface,

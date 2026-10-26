@@ -29,7 +29,7 @@ printf 'bumperbot_controller:\n  ros__parameters:\n    wheel_separation_multipli
 setsid ros2 run tf2_ros static_transform_publisher --frame-id map --child-frame-id odom > /tmp/static_map_odom.log 2>&1 &
 TFPID=$!
 
-setsid ros2 launch bumperbot_digital_twin real_side.launch.py use_mock_hardware:=true use_ekf:=true real_domain:=10 \
+setsid ros2 launch bumperbot_digital_twin real_side.launch.py use_mock_hardware:=true use_lidar:=false use_ekf:=true real_domain:=10 \
   calibration_file:=/tmp/calibracion_ci.yaml \
   > /tmp/mock_stack.log 2>&1 &
 PID=$!

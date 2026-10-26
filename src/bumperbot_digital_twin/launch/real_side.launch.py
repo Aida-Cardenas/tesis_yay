@@ -30,6 +30,8 @@ def generate_launch_description():
         DeclareLaunchArgument("use_mock_hardware", default_value="false",
                               description="true: sin Arduino, ruedas simuladas por ros2_control"),
         DeclareLaunchArgument("arduino_port", default_value="/dev/arduino"),
+        DeclareLaunchArgument("use_lidar", default_value="true",
+                              description="false: sin el driver del RPLidar (pruebas sin el sensor)"),
         DeclareLaunchArgument("calibration_file", default_value="",
                               description="Calibración de ruedas (twin_calibrate wheels)"),
         DeclareLaunchArgument("anomaly_detector", default_value="true"),
@@ -49,6 +51,7 @@ def generate_launch_description():
             "use_safety_stop": lc("use_safety_stop"),
             "use_mock_hardware": lc("use_mock_hardware"),
             "arduino_port": lc("arduino_port"),
+            "use_lidar": lc("use_lidar"),
             "calibration_file": lc("calibration_file"),
         }.items(),
     )
