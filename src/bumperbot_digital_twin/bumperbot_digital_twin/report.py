@@ -362,7 +362,7 @@ def build_report(csv_paths, out_dir, protocol=None, plots=True):
                      f"{'con' if comp == 'sí' else 'sin'} compensación")
             ax.plot([p[0] for p in pts], [p[1] * 100 for p in pts], "o", ls=styles.get(leader, "-"),
                     color=colors.get(comp, "#444444"), label=label)
-        ax.set_xlabel("Retardo de red emulado, un sentido [ms]")
+        ax.set_xlabel("Retardo nominal de la red emulada, un sentido [ms]")
         ax.set_ylabel(f"{METRICS[sweep['metric']][0]} [cm]")
         ax.set_title(f"Recorrido: {sweep['pattern']} · con corrección, sin modelo calibrado, ganancias por defecto",
                      fontsize=9)

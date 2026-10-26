@@ -97,7 +97,7 @@ Los eventos (`bumperbot_msgs/TwinAnomaly`, con inicio y fin) se publican en `/di
 **Compensación** (`compensation:=true`):
 
 - Si el líder es el robot real, su pose llega con retardo. El puente la *extrapola* hacia el presente con su última velocidad y el retardo de un sentido (mitad del RTT medido).
-- Si el seguidor es el robot real, sus comandos llegan tarde y su pose vuelve tarde: lazo cerrado con retardo, que oscila si la corrección es fuerte. El puente usa un **predictor de Smith**: integra los comandos que ya mandó y todavía no se ven reflejados para estimar dónde está el robot *ahora* y corrige sobre esa estimación.
+- Si el seguidor es el robot real, sus comandos llegan tarde y su pose vuelve tarde: lazo cerrado con retardo, que oscila si la corrección es fuerte. El puente usa un **predictor de Smith**: reproduce los comandos que ya mandó y todavía no se ven reflejados para estimar dónde está el robot *ahora*, y corrige sobre esa estimación. Si hay un modelo identificado cargado (el de la calibración), cada velocidad parte de la medida y responde a esos comandos con la ganancia, la constante de tiempo y el retardo del robot, que es lo que define a un predictor de Smith. Sin modelo, se reproducen los comandos como si el robot cambiara de velocidad al instante (reproducción cinemática), lo que en cada arranque o parada deja un desfase de alrededor de v·(L + τ).
 
 ## 6. Comparación de LiDAR real y simulado
 
@@ -121,11 +121,25 @@ Muestra en vivo líder, error, RTT, retardo, red, LiDAR y anomalías, con gráfi
 ros2 run bumperbot_digital_twin twin_experiment protocolo_real
 ```
 
-Lee un protocolo YAML (`config/protocolo_real.yaml`, `protocolo_simulacion.yaml`), y para cada experimento y repetición configura el puente, realinea, abre un registro `<experimento>_r<n>`, hace el recorrido y espera. Entre corridas pide colocar el robot en la marca (con `--auto` no pregunta). A mitad del protocolo puede calibrar el gemelo con las corridas anteriores (`calibrate_from`). Al final genera `informe.md` / `informe.json`: media ± desviación por experimento, comparaciones con prueba t de Welch, con la diferencia entre condiciones y su intervalo de confianza del 95 %, y la gráfica de error contra latencia. Una comparación con menos de 5 corridas por grupo se marca como no concluyente: con 2 corridas, el mismo escenario de CI dio p = 0,18 y p = 0,005. Por eso `protocolo_real` y `protocolo_simulacion` repiten 5 veces cada experimento que entra en una comparación.
+Lee un protocolo YAML (`config/protocolo_real.yaml`, `protocolo_simulacion.yaml`), y para cada experimento y repetición configura el puente, realinea, abre un registro `<experimento>_r<n>`, hace el recorrido y espera. Entre corridas pide colocar el robot en la marca (con `--auto` no pregunta); ahí se puede escribir el voltaje de la batería, `s` para saltar la corrida (se repite al final de su grupo), `x` si la corrida anterior salió mal (se descarta y se repite) o `q` para terminar. A mitad del protocolo calibra el gemelo con las corridas anteriores (`calibrate_from`) y sintoniza las ganancias (TUNE). Al final genera `informe.md` / `informe.json`.
 
-`protocolo_real` cubre toda la Prueba 5: E1–E6 (corrección, espejo, ambos sentidos), calibración, E7 (gemelo calibrado), L100/L250 con y sin compensación (y con el robot real como seguidor), TUNE (sintonización con el modelo de CAL) con G0T y L250RT para validarla, A1/A2 (atasco y empujón provocados a mano).
+**Diseño de la sesión.**
 
-Informe de varias carpetas de registros: `ros2 run bumperbot_digital_twin twin_report ~/twin_logs/*.csv -p protocolo_real -o informe`. Sin `-p` no hay comparaciones ni gráfica de latencia, porque es el protocolo el que dice qué experimentos se pueden comparar. Todas las comparaciones y la gráfica usan `rmse_real`, el error real entre los dos robots en el mismo instante; el `rmse` compensado es el que la propia corrección lleva a cero y favorecería a la compensación por construcción. Cada corrida cierra su registro al terminar, así que el reposicionamiento del robot entre corridas no entra en las métricas.
+- *Orden intercalado.* Las condiciones que se comparan entre sí (grupos `interleave` del protocolo) no se corren en bloques sino por rondas: una corrida de cada una por ronda, en orden aleatorio dentro de la ronda. Así, lo que cambia con el tiempo (la batería, la temperatura de los motores, la red, el cansancio del operador) no se confunde con el efecto de la condición. La semilla del orden queda en la sesión.
+- *Relojes.* Antes de empezar se mide la diferencia de relojes con el robot (el eco devuelve su hora); avisa si supera 10 ms y no arranca si supera 50 ms (`--ignore-clock` para forzar). La diferencia queda guardada en cada corrida.
+- *Sesión retomable.* Cada corrida queda en `sesion.json` de la carpeta de la sesión, completa o no. Una sesión interrumpida (batería, caída del PC) se retoma con `--resume <carpeta>`, que reutiliza su calibración y sus ganancias; también se pueden pasar `--model` y `--gains`. Una corrida interrumpida con Ctrl-C no cuenta.
+- *Estadística.* Media ± desviación por experimento y, por cada comparación del protocolo, la diferencia con su intervalo de confianza del 95 %, la prueba t de Welch y el p corregido por Holm-Bonferroni, porque se hacen varias comparaciones a la vez. Una comparación con menos de 5 corridas por grupo se marca como no concluyente: con 2 corridas, el mismo escenario de CI dio p = 0,18 y p = 0,005. Por eso los protocolos real y de simulación repiten 5 veces cada experimento que entra en una comparación.
+- *Avisos de calidad.* El informe lista las corridas en las que la compensación estuvo activa sin latencia medida, en las que Gazebo no alcanzó el tiempo real o con más de 10 ms de diferencia de relojes.
+
+`protocolo_real` cubre toda la Prueba 5 en 77 corridas (unas 2 horas):
+
+1. E1/E2 intercalados (recta con corrección y solo copiando comandos), E5 (círculo) y E6 (el robot real sigue al gemelo).
+2. CAL con E1, E2 y E5, y TUNE (sintonización simulada con ese modelo).
+3. E3, E4, E7 y G0T intercalados en cuadrados: corrección, espejo, gemelo calibrado y ganancias sintonizadas. El gemelo se calibró con rectas y círculos y se evalúa en cuadrados, un recorrido que no vio al calibrarse.
+4. L100, L100C, L250 y L250C intercalados, y L250R, L250RC y L250RT intercalados (latencia, compensación y ganancias con el robot real como seguidor).
+5. A1/A2 (atasco y empujón provocados a mano).
+
+Informe de una sesión: `ros2 run bumperbot_digital_twin twin_report ~/twin_resultados/<sesión> -p protocolo_real -o informe` (usa solo sus corridas completas y válidas; con una carpeta de registros o una lista de CSV usa todo lo que encuentre). Sin `-p` no hay comparaciones ni gráfica de latencia, porque es el protocolo el que dice qué experimentos se pueden comparar. Las comparaciones de latencia y compensación y la gráfica usan `rmse_real`, el error real entre los dos robots en el mismo instante; el `rmse` compensado es el que la propia corrección lleva a cero y favorecería a la compensación por construcción. Las demás (E1/E2, E3/E4, E4/E7, E3/G0T) usan `rmse`: no tienen retardo emulado, así que los dos coinciden. El eje de la gráfica es el retardo nominal; el efectivo es algo mayor porque la red emulada conserva el orden de los mensajes. Cada corrida cierra su registro al terminar, así que el reposicionamiento del robot entre corridas no entra en las métricas.
 
 ## 9. Navegación con vista previa
 
@@ -253,50 +267,52 @@ Análisis de una corrida: `ros2 run bumperbot_digital_twin analyze_twin_log ~/tw
 7. El robot real completo con hardware simulado (ros2_control mock) + EKF + Nav2 + detector + medidor de odometría, y el gemelo siguiéndolo. Cada nodo de Nav2 debe quedar en `active [3]`; como el hardware simulado no tiene LiDAR, se publica un `map → odom` fijo para que AMCL no haga falta.
 8. El gemelo en Gazebo sin ventana, en el recinto, siguiendo a un robot real de mentira, y una meta de navegación con vista previa usando Nav2 y AMCL del gemelo. Comprueba además que el LiDAR de Gazebo publica en `laser_link`.
 
-Resultados de la corrida automática del 20 de octubre de 2026 (todas las pruebas aprobadas; todo simulado, en un solo computador):
+Resultados de la corrida automática del 26 de octubre de 2026 (commit `54c6e7c`; todas las pruebas aprobadas; todo simulado, en un solo computador):
 
 **Sincronización y LiDAR** (robot "real" de mentira y gemelo con 10 % menos de velocidad, cuadrado de 0,6 m a 0,3 m/s, ambos en un recinto de 2 × 2 m):
 
 | Líder | Corrección | Error medio | Error máximo | Error final | MAE del LiDAR | Anomalías |
 |---|---|---|---|---|---|---|
-| real | sí | 1,0 cm | 2,4 cm | 0,8 cm | 1,8 cm | ninguna |
-| real | no (espejo) | 15,5 cm | 25,0 cm | 25,0 cm | 1,6 cm | ninguna |
-| gemelo | sí | 1,0 cm | 3,0 cm | 0,8 cm | 2,1 cm | ninguna |
+| real | sí | 0,9 cm | 2,4 cm | 0,6 cm | 1,8 cm | ninguna |
+| real | no (espejo) | 15,6 cm | 25,2 cm | 25,0 cm | 1,6 cm | ninguna |
+| gemelo | sí | 1,0 cm | 2,3 cm | 0,8 cm | 2,1 cm | ninguna |
 
 **Fallas inyectadas:** atasco, deslizamiento y empujón se detectaron cada uno como su tipo, sin falsas alarmas de los otros.
 
-**Protocolo completo** (`protocolo_ci` con `twin_experiment --auto`, 2 repeticiones; el robot "real" de mentira tiene K = 0,85, τ = 0,3 s y 0,1 s de retardo, y el gemelo responde casi ideal). Todas las filas usan el error real entre los dos robots en el mismo instante (`rmse_real`), salvo M y MC, que no tienen retardo de red y en las que los dos errores coinciden:
+**Protocolo completo** (`protocolo_ci` con `twin_experiment --auto`, 2 repeticiones, D/DC y R/RC/RT intercalados; el robot "real" de mentira tiene K = 0,85, τ = 0,3 s y 0,1 s de retardo, y el gemelo responde casi ideal). Las filas de latencia usan el error real entre los dos robots en el mismo instante (`rmse_real`); M y MC no tienen retardo de red y los dos errores coinciden. Con 2 repeticiones, **ninguna comparación es concluyente**: los p se muestran solo como indicación.
 
-| Experimento | RMSE de posición | Reducción | p de Welch (n = 2: indicativo) |
+| Experimento | RMSE de posición | Reducción | p de Welch (n = 2) |
 |---|---|---|---|
-| M: solo copia comandos | 25,9 cm | | |
-| MC: solo copia comandos, gemelo calibrado | 2,6 cm | −90 % | p = 0,007 |
+| M: solo copia comandos | 24,1 cm | | |
+| MC: solo copia comandos, gemelo calibrado | 2,1 cm | −91 % | 0,016 |
 | D: red de 200 ms, sin compensación | 2,0 cm | | |
-| DC: red de 200 ms, con compensación | 1,8 cm | −10 % | no concluyente |
-| R: el real sigue al gemelo, red de 300 ms | 24,5 cm | | |
-| RC: lo mismo con predictor de Smith | 14,0 cm | −43 % | p = 0,015 |
-| RT: lo mismo con ganancias sintonizadas por el gemelo (kx 0,4 / ky 0,5 / kθ 0,3) | 12,5 cm | −49 % | p = 0,009 |
+| DC: red de 200 ms, con compensación | 1,9 cm | −5 % | 0,144 |
+| R: el real sigue al gemelo, red de 300 ms | 24,8 cm | | |
+| RC: lo mismo con predictor de Smith (con el modelo identificado) | 14,3 cm | −42 % | 0,019 |
+| RT: lo mismo con ganancias sintonizadas (kx 0,4 / ky 4,1 / kθ 0,3) | 17,0 cm | −31 % | 0,313 |
 
-El gemelo calibrado y la compensación con el robot real como seguidor dan mejoras grandes (p < 0,05, aunque con 2 repeticiones el valor de p es solo indicativo; por eso los protocolos real y de simulación usan 5). Con el gemelo como seguidor (D/DC), la compensación casi no cambia el error real. El RMSE compensado, que es el que mide el propio puente, sí baja de 3,4 a 1,9 cm, pero eso es la corrección alcanzando la pose extrapolada, no al robot real. Con dos repeticiones, el valor de p de esa comparación cambió de 0,18 a 0,005 entre dos corridas idénticas, así que el resultado no es concluyente; la mejora del error real, si existe, es pequeña. La sintonización sola logra lo mismo que el predictor de Smith: con 300 ms de retardo, lo mejor es corregir con suavidad.
+El gemelo calibrado y el predictor de Smith con el robot real como seguidor dan mejoras grandes. Con el gemelo como seguidor (D/DC), la compensación casi no cambia el error real: el RMSE compensado que mide el propio puente baja de 3,4 a 2,0 cm, pero eso es la corrección alcanzando la pose extrapolada, no al robot real.
 
-El modelo identificado a partir de M fue K = 0,85, τ = 0,31 s y L = 0,088 s en la velocidad lineal (R² de la respuesta simulada = 0,998), y K = 0,84, τ = 0,28 s y L = 0,106 s en la angular (R² = 0,999), cercano a los valores con que se configuró el robot de mentira. Una diferencia queda por debajo y la otra por encima de 0,1 s, lo que se parece más a ruido de cuantización (el robot de mentira avanza con pasos de Euler a 50 Hz y el registro muestrea a 20 Hz) que a un atraso sistemático.
+Las ganancias sintonizadas mejoraron menos que en corridas anteriores (12,5 cm con kx 0,4 / ky 0,5 / kθ 0,3, cuando ky tenía como mínimo 0,5). En la simulación de la sintonización, ky casi no cambia el costo: 11,4 cm de error con ky = 0,5 y 11,5 cm con ky = 4,1. Por eso, al ampliar los límites, el optimizador eligió un ky alto, que con el robot de mentira resultó peor. La simulación no capta algo que sí afecta al robot de mentira; queda como punto abierto, y G0T y L250RT con el robot físico dirán cuánto valen las ganancias sintonizadas.
+
+El modelo identificado a partir de M fue K = 0,85, τ = 0,29 s y L = 0,093 s en la velocidad lineal, y K = 0,85, τ = 0,29 s y L = 0,090 s en la angular (R² de la respuesta simulada = 0,999 en ambas), cercano a los valores con que se configuró el robot de mentira. Entre corridas, el retardo identificado cae a ambos lados de 0,1 s, lo que se parece más a ruido de cuantización (el robot de mentira avanza con pasos de Euler a 50 Hz y el registro muestrea a 20 Hz) que a un atraso sistemático.
 
 **Navegación con vista previa** (navegadores de mentira, recinto `arena`):
 
 | Meta | Veredicto del gemelo | Tiempo gemelo / real | Desviación media / máxima entre rutas | Error final del real |
 |---|---|---|---|---|
-| N1 (1,2; 0) | Aprobada | 7,9 s / 6,7 s | 0,0 / 0,1 cm | 4,7 cm |
-| N2 (1,0; 0,6) | Aprobada | 7,8 s / 6,1 s | 1,7 / 3,9 cm | 4,4 cm |
-| N3 (0,3; −0,6) | Aprobada | 13,2 s / 11,3 s | 2,7 / 5,2 cm | 4,4 cm |
-| N4 (0; 0) | Aprobada | 7,8 s / 7,2 s | 2,7 / 10,4 cm | 4,5 cm |
-| X1 pegada a la pared | Rechazada: pasó a 18 cm (mínimo 20) | 12,0 s / — | — | el real no se movió |
+| N1 (1,2; 0) | Aprobada | 8,0 s / 6,7 s | 0,0 / 0,0 cm | 4,7 cm |
+| N2 (1,0; 0,6) | Aprobada | 7,7 s / 6,1 s | 1,9 / 4,2 cm | 4,4 cm |
+| N3 (0,3; −0,6) | Aprobada | 13,3 s / 11,2 s | 2,5 / 4,8 cm | 4,5 cm |
+| N4 (0; 0) | Aprobada | 7,8 s / 7,2 s | 2,3 / 9,6 cm | 4,4 cm |
+| X1 pegada a la pared | Rechazada: pasó a 18 cm (mínimo 20) | 11,9 s / — | — | el real no se movió |
 | X2 fuera del recinto | Rechazada: no hay camino | 0,1 s / — | — | el real no se movió |
 
-**Vista previa con Nav2 de verdad**: el gemelo en Gazebo (AMCL en el mapa `arena` y Nav2) aprobó una meta a (1,0; 0,3) m en 8,7 s; el robot real de mentira la ejecutó en 6,7 s con una desviación media de 4,4 cm respecto a la ruta prevista (máxima 8,5 cm).
+**Vista previa con Nav2 de verdad**: el gemelo en Gazebo (AMCL en el mapa `arena` y Nav2) aprobó una meta a (1,0; 0,3) m en 8,7 s; el robot real de mentira la ejecutó en 6,7 s con una desviación media de 4,6 cm respecto a la ruta prevista (máxima 8,7 cm).
 
-**Gemelo en Gazebo** (física, EKF y Nav2) siguiendo al robot de mentira en el recinto `arena`: error medio 0,4 cm, máximo 1,9 cm; LiDAR de Gazebo (en `laser_link`) frente al de mentira: MAE 2,1 cm, coincidencia de visibilidad 99,7 %.
+**Gemelo en Gazebo** (física, EKF y Nav2) siguiendo al robot de mentira en el recinto `arena`: error medio 0,5 cm, máximo 2,5 cm; LiDAR de Gazebo (en `laser_link`) frente al de mentira: MAE 2,0 cm, coincidencia de visibilidad 99,7 %.
 
-**Robot real con hardware simulado** (ros2_control mock + EKF + Nav2 en `active [3]` + detector, 17 comprobaciones aprobadas) y gemelo siguiéndolo en un ida y vuelta de 0,8 m: error medio 1,0 cm, máximo 1,5 cm.
+**Robot real con hardware simulado** (ros2_control mock + EKF + Nav2 en `active [3]` + detector, 17 comprobaciones aprobadas) y gemelo siguiéndolo en un ida y vuelta de 0,8 m: error medio 0,8 cm, máximo 1,3 cm.
 
 La latencia de red en estas pruebas es local (menos de 2 ms); con la Raspberry Pi por Wi-Fi será mayor, y es lo que mide `protocolo_real`.
 
