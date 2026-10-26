@@ -3,6 +3,8 @@
 #   ros2 run bumperbot_digital_twin twin_experiment protocolo_real --resume ~/twin_resultados/<sesión>
 # Antes de cada corrida el programa pide colocar el robot en la marca de salida;
 # ahí se puede escribir el voltaje de la batería.
+# Gazebo sin ventana (digital_twin.launch.py gui:=false) y el robot lanzado dentro
+# de tmux en la Raspberry Pi (README).
 #
 # Diseño:
 # - Los experimentos que entran en una prueba t de Welch llevan 5 repeticiones:

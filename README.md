@@ -34,7 +34,8 @@ tesis-gemelo-digital-wmr/          <- esta carpeta ES el workspace (colcon build
 ├── docs/RESPUESTA_REVISION_2.md  ídem para la segunda revisión
 ├── docs/RESPUESTA_REVISION_3.md  ídem para la tercera revisión
 ├── docs/RESPUESTA_REVISION_4.md  ídem para la cuarta revisión
-└── docs/REVISION_GENERAL.md     revisión de errores y seguridad antes de cargar el código en el robot
+├── docs/REVISION_GENERAL.md     revisión de errores y seguridad antes de cargar el código en el robot
+└── docs/RESPUESTA_OPTIMIZACION.md  optimizaciones posteriores (odometría con contadores, sintonización)
 ```
 
 ## Requisitos
@@ -74,6 +75,13 @@ Probado para Ubuntu Server 22.04 de 64 bits con `ros-humble-ros-base`.
    ```
    Si no existe `/dev/i2c-1`, agregar `dtparam=i2c_arm=on` a `/boot/firmware/config.txt` y reiniciar. Si `i2cdetect` no muestra `68`, revisar SDA (GPIO 2, pin 3), SCL (GPIO 3, pin 5), 3,3 V y GND.
 4. **Red.** El PC y la Pi en la misma red, con el mismo `ROS_DOMAIN_ID` y sin `ROS_LOCALHOST_ONLY=1`. Comprobar con `ros2 topic list` en el PC mientras corre algo en la Pi.
+5. **Lanzar dentro de `tmux`.** Si el robot se lanza por SSH y el Wi-Fi se corta un momento, la sesión se cierra, el launch se detiene con ella y se pierde la corrida. Dentro de `tmux` sigue corriendo; después se vuelve a la misma sesión:
+   ```bash
+   sudo apt install -y tmux
+   tmux new -s robot
+   ros2 launch bumperbot_digital_twin real_side.launch.py real_domain:=10
+   ```
+   `Ctrl+b` y luego `d` deja la sesión corriendo en segundo plano; `tmux attach -t robot` vuelve a ella.
 
 ## Uso en simulación (gemelo digital en Gazebo)
 
@@ -152,7 +160,7 @@ Luego se usa con `map_name:=mi_mapa`.
 
    Al arrancar es normal ver "Waiting for the first data from the Arduino" durante uno o dos segundos (abrir el puerto reinicia el Arduino). Si después aparece "No data from the Arduino", revisar el cable, que el sketch esté cargado y los 115200 baudios. Si el LiDAR no está conectado, su nodo se reinicia cada 3 s hasta que aparezca `/dev/rplidar`; el resto del robot sigue funcionando.
 5. **Comprobar el sentido de giro, antes de cualquier otra prueba.** Si el robot estaba cableado para el sketch "invertido" del curso, con el sketch actual puede andar hacia atrás mientras la odometría de las ruedas parece correcta (los encoders se invierten junto con los motores). Solo la IMU y el LiDAR lo delatan.
-   1. *Hacia adelante, sin ROS.* Con `real_robot.launch.py` cerrado, abrir el monitor serie del Arduino IDE a 115200 baudios y enviar `rp03.00,lp03.00,` varias veces seguidas (el Arduino frena las ruedas si pasa medio segundo sin comandos). El robot debe avanzar hacia su frente y las respuestas deben empezar con `rp` y traer `lp` (signo positivo en ambas ruedas). Si una rueda gira hacia atrás, se invierten los dos cables de ese motor en el L298N; si gira hacia adelante pero responde con `n`, se intercambian las fases A y B de su encoder.
+   1. *Hacia adelante, sin ROS.* Con `real_robot.launch.py` cerrado, abrir el monitor serie del Arduino IDE a 115200 baudios y enviar `rp03.00,lp03.00,` varias veces seguidas (el Arduino frena las ruedas si pasa medio segundo sin comandos). El robot debe avanzar hacia su frente y las respuestas deben empezar con `rp` y traer `lp` (signo positivo en ambas ruedas), y los contadores `rc` y `lc` del final de cada línea deben ir aumentando. Si una rueda gira hacia atrás, se invierten los dos cables de ese motor en el L298N; si gira hacia adelante pero responde con `n`, se intercambian las fases A y B de su encoder.
    2. *Giro, con ROS.* Lanzar `real_robot.launch.py` y en otra terminal:
       ```bash
       ros2 topic pub -r 10 /key_vel geometry_msgs/msg/Twist "{angular: {z: 0.5}}"
@@ -180,6 +188,12 @@ ros2 launch bumperbot_digital_twin digital_twin.launch.py real_domain:=10 twin_d
 ```
 
 Sin robot, todo en el PC: `ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake driver:=square`.
+
+Para la toma de datos, Gazebo sin ventana (`gui:=false`): la ventana es lo que más lo frena, y si el gemelo corre más lento que el tiempo real el informe lo marca como aviso de calidad. RViz o el panel bastan para mirar:
+
+```bash
+ros2 launch bumperbot_digital_twin digital_twin.launch.py real_domain:=10 twin_domain:=20 gui:=false dashboard:=true
+```
 
 | Herramienta | Para qué |
 |---|---|

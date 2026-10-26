@@ -170,6 +170,7 @@ La ley de seguimiento tiene tres ganancias (kx, ky, kθ). Las de por defecto (1,
 1. Simula el lazo completo (líder → red → puente → seguidor) con el modelo identificado del robot real (`twin_calibrate dynamics`) y el del gemelo, en cada escenario: recorrido × quién sigue × retardo de red, con o sin compensación.
 2. El costo es el RMSE de posición más una pequeña penalización al error de orientación y a los cambios bruscos de comando.
 3. Busca en escala logarítmica: una rejilla de 4 × 4 × 4 combinaciones y luego Nelder-Mead desde las dos mejores. Nunca devuelve algo peor que las ganancias de partida.
+4. Desempata hacia las ganancias por defecto: entre todas las combinaciones simuladas cuyo costo queda a menos de un 1 % del mejor, elige la más cercana a 1,5 / 6 / 3 (en escala logarítmica). Cuando el costo casi no cambia con una ganancia, como pasa con ky, la búsqueda ya no termina en un valor distinto en cada corrida: solo se aparta de los valores por defecto si eso mejora el costo de verdad. El informe de la sintonización lo explica, y sigue avisando si una ganancia queda en un límite de la búsqueda.
 
 ```bash
 ros2 run bumperbot_digital_twin twin_tune --real-model modelo_gemelo.yaml --follower twin,real --delay-ms 0,250
