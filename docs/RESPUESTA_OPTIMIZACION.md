@@ -42,6 +42,23 @@ Pruebas: gtests nuevos (posición desde los contadores, líneas perdidas, contad
 - **`tmux` en la Raspberry Pi.** Si el robot se lanza por SSH y el Wi-Fi se corta un momento, el launch se cierra con la sesión y se pierde la corrida. El README explica cómo lanzarlo dentro de `tmux`.
 - **Gazebo sin ventana para la toma de datos** (`gui:=false`). La ventana es lo que más frena a Gazebo, y R4-L14 marca como aviso de calidad cualquier corrida en la que el gemelo no alcance el tiempo real. Está en el README y en la cabecera de `protocolo_real.yaml`.
 
+## Resultado de CI
+
+Corrida del 26 de octubre de 2026 (commit `a217acb`): todas las pruebas aprobadas, el sketch compilado para Uno y Nano, y el robot con hardware simulado con los siete nodos de Nav2 en `active [3]`. La prueba de Gazebo necesitó el reintento (en el primer intento los sensores de Gazebo sin ventana no llegaron a publicar) y el aviso lo mostró. Los números de `GEMELO_DIGITAL.md`, sección 14, son los de esta corrida.
+
+`protocolo_ci` (n = 2, no concluyente por diseño; error real):
+
+| Comparación | Sin | Con | p |
+|---|---|---|---|
+| M vs MC: gemelo calibrado | 23,8 cm | 2,2 cm | 0,016 |
+| D vs DC: compensación, gemelo seguidor, 200 ms | 2,0 cm | 1,9 cm | 0,187 |
+| R vs RC: predictor de Smith, real seguidor, 300 ms | 24,7 cm | 14,1 cm | 0,024 |
+| R vs RT: ganancias sintonizadas (0,5 / 3,4 / 0,3) | 24,7 cm | 16,7 cm | 0,279 |
+
+Sobre la sintonización: el desempate eligió ky 3,4, cerca del valor por defecto, y RT dio 16,7 cm. En una corrida anterior la búsqueda sin desempate terminó en ky 0,5 y RT dio 12,6 cm. El desempate hace que la elección no dependa de dónde termina la búsqueda, pero el robot de mentira anduvo mejor con ky bajo y la simulación no capta esa diferencia; con una sola corrida tampoco se puede afirmar todavía que el resultado se repita. El punto abierto de R4-L16 sigue abierto en el fondo: G0T y L250RT con el robot físico dirán cuánto valen las ganancias sintonizadas.
+
+El robot de mentira y Gazebo no usan el protocolo serie, así que la odometría por contadores no aparece en estos números: la prueban los gtests, y en el robot, el paso 5 del README.
+
 ## Lo que se revisó y no se cambió
 
 - **Predictor de Smith:** tarda menos de 1 ms por ciclo de 50 ms; no hacía falta optimizarlo.

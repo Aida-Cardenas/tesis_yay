@@ -2,7 +2,7 @@
 
 Qué se hizo con cada punto de la cuarta revisión (24 de octubre de 2026). Las respuestas anteriores están en [`RESPUESTA_REVISION.md`](RESPUESTA_REVISION.md), [`RESPUESTA_REVISION_2.md`](RESPUESTA_REVISION_2.md) y [`RESPUESTA_REVISION_3.md`](RESPUESTA_REVISION_3.md).
 
-**Resultado de CI:** corridas del 26 de octubre de 2026, todas las pruebas aprobadas: el robot con hardware simulado con Nav2 en `active [3]`, el sketch compilado para Uno y Nano, y Gazebo con Nav2. Gazebo pasó al primer intento en `54c6e7c`; en `da36973` necesitó el reintento (falló la vista previa de navegación del primer intento) y el aviso nuevo lo mostró. Los números de `GEMELO_DIGITAL.md`, sección 14, son los de `54c6e7c`.
+**Resultado de CI:** corridas del 26 de octubre de 2026, todas las pruebas aprobadas: el robot con hardware simulado con Nav2 en `active [3]`, el sketch compilado para Uno y Nano, y Gazebo con Nav2. Gazebo pasó al primer intento en `54c6e7c`; en `da36973` necesitó el reintento (falló la vista previa de navegación del primer intento) y el aviso nuevo lo mostró. Los números de `GEMELO_DIGITAL.md`, sección 14, eran los de `54c6e7c`; desde las optimizaciones ([`RESPUESTA_OPTIMIZACION.md`](RESPUESTA_OPTIMIZACION.md)) son los de `a217acb`.
 
 ## Alta
 
