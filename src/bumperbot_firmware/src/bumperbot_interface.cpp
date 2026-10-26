@@ -2,6 +2,7 @@
 #include "bumperbot_firmware/serial_protocol.hpp"
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
 #include <algorithm>
+#include <cmath>
 #include <pluginlib/class_list_macros.hpp>
 
 
@@ -48,6 +49,27 @@ CallbackReturn BumperbotInterface::on_init(const hardware_interface::HardwareInf
     RCLCPP_FATAL(rclcpp::get_logger("BumperbotInterface"), "No Serial Port provided! Aborting");
     return CallbackReturn::FAILURE;
   }
+
+  // Must match counts_per_rev in robot_control.ino
+  double counts_per_rev = 770.0;
+  const auto cpr = info_.hardware_parameters.find("encoder_counts_per_rev");
+  if (cpr != info_.hardware_parameters.end())
+  {
+    try
+    {
+      counts_per_rev = std::stod(cpr->second);
+    }
+    catch (const std::exception &)
+    {
+      counts_per_rev = 0.0;
+    }
+  }
+  if (!(counts_per_rev > 0.0))
+  {
+    RCLCPP_FATAL(rclcpp::get_logger("BumperbotInterface"), "encoder_counts_per_rev must be positive");
+    return CallbackReturn::FAILURE;
+  }
+  wheels_ = WheelIntegrator(0.3, 2.0 * M_PI / counts_per_rev);
 
   // Each wheel is located by its joint name, not by its position in the URDF:
   // the URDF lists the left wheel first, while the Arduino protocol names the
@@ -250,13 +272,21 @@ hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
       RCLCPP_WARN_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 2000,
                            "Ignored malformed data from the Arduino: '%s'", message.c_str());
     }
+    else if (!reading.complete())
+    {
+      RCLCPP_WARN_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 5000,
+                           "Incomplete line from the Arduino: '%s'. Lines without the encoder counters "
+                           "(rc, lc) come from an old sketch: load robot_control.ino again",
+                           message.c_str());
+    }
     wheels_.on_reading(now, reading);
   }
 
-  // The Arduino reports every 100 ms and the loop runs faster, so the last
-  // measured speed is held and integrated with the controller period (not the
-  // wall clock, which can jump). If no valid reading arrives for 0.3 s the
-  // speeds drop to zero and the wheels stop moving in the odometry.
+  // The Arduino reports every 100 ms and the loop runs faster: between readings
+  // the position advances with the last speed and the controller period (not the
+  // wall clock, which can jump), and each reading sets it back to the exact value
+  // of the encoder counters. If no valid reading arrives for 0.3 s the speeds
+  // drop to zero and the wheels stop moving in the odometry.
   const bool stale = wheels_.advance(now, period.seconds());
   if (!wheels_.has_reading())
   {

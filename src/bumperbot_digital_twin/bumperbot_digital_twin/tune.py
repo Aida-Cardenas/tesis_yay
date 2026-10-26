@@ -18,7 +18,7 @@ import sys
 
 from bumperbot_digital_twin.dynamics import NOMINAL_MODEL, TwinModel
 from bumperbot_digital_twin.tuning import (
-    DEFAULT_GAINS, CostWeights, Limits, save_gains, scenarios_from, simulate, tune,
+    DEFAULT_GAINS, TIE_TOLERANCE, CostWeights, Limits, save_gains, scenarios_from, simulate, tune,
 )
 
 
@@ -40,7 +40,9 @@ def report_markdown(result, scenarios, real_model, twin_model):
         f"| Después | {g['kx']:.2f} | {g['ky']:.2f} | {g['ktheta']:.2f} | {result.cost:.4f} |", "",
         f"{result.evaluations} combinaciones simuladas en {len(scenarios)} escenarios.",
         "Costo de cada escenario: RMSE de la posición real entre los robots en simulación + 0,05 × RMSE "
-        "de orientación + 0,01 × esfuerzo de control; se promedia entre escenarios.",
+        "de orientación + 0,01 × esfuerzo de control; se promedia entre escenarios. Entre las combinaciones "
+        f"a menos de un {TIE_TOLERANCE:.0%} del mejor costo se elige la más cercana a las ganancias por defecto, "
+        "para que el resultado se pueda repetir cuando el costo casi no cambia con alguna ganancia.",
         (f"Atención: {', '.join(result.at_bounds)} quedó en el límite de la búsqueda." if result.at_bounds
          else "Ninguna ganancia quedó en el límite de la búsqueda."), "",
         "| Escenario | RMSE antes [cm] | RMSE después [cm] | Máx. antes [cm] | Máx. después [cm] |",

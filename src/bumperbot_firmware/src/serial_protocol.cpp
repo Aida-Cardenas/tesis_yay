@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <initializer_list>
 #include <iomanip>
 #include <sstream>
 
@@ -33,6 +34,22 @@ bool parse_number(const std::string & text, double & value)
     ++end;
   }
   return end != begin && end != nullptr && *end == '\0' && std::isfinite(value);
+}
+
+bool parse_count(const std::string & text, uint16_t & count)
+{
+  if (text.empty() || text.size() > 5 ||
+      !std::all_of(text.begin(), text.end(), [](char c) {return std::isdigit(static_cast<unsigned char>(c));}))
+  {
+    return false;
+  }
+  const long value = std::strtol(text.c_str(), nullptr, 10);
+  if (value > 65535)
+  {
+    return false;
+  }
+  count = static_cast<uint16_t>(value);
+  return true;
 }
 
 void append_wheel(std::ostringstream & out, char wheel, double velocity)
@@ -65,24 +82,22 @@ WheelReading parse_wheel_message(const std::string & message)
     {
       continue;
     }
+    const bool valid_wheel = token.size() >= 3 && (token[0] == 'r' || token[0] == 'l');
+    WheelSample & wheel = token[0] == 'r' ? reading.right : reading.left;
+    const char kind = valid_wheel ? token[1] : '?';
     double value = 0.0;
-    const bool valid_header = token.size() >= 3 && (token[0] == 'r' || token[0] == 'l') &&
-                              (token[1] == 'p' || token[1] == 'n');
-    if (!valid_header || !parse_number(token.substr(2), value))
+    if ((kind == 'p' || kind == 'n') && parse_number(token.substr(2), value))
     {
-      ++reading.rejected;
-      continue;
+      wheel.speed = kind == 'p' ? value : -value;
+      wheel.has_speed = true;
     }
-    const double signed_value = token[1] == 'p' ? value : -value;
-    if (token[0] == 'r')
+    else if (kind == 'c' && parse_count(token.substr(2), wheel.count))
     {
-      reading.right = signed_value;
-      reading.has_right = true;
+      wheel.has_count = true;
     }
     else
     {
-      reading.left = signed_value;
-      reading.has_left = true;
+      ++reading.rejected;
     }
   }
   return reading;
@@ -114,8 +129,8 @@ bool take_last_line(std::string & buffer, std::string & line, size_t max_buffer)
   return true;
 }
 
-WheelIntegrator::WheelIntegrator(double timeout_s)
-: timeout_s_(timeout_s), last_reading_s_(0.0), has_reading_(false)
+WheelIntegrator::WheelIntegrator(double timeout_s, double rad_per_count)
+: timeout_s_(timeout_s), rad_per_count_(rad_per_count)
 {
 }
 
@@ -123,25 +138,43 @@ void WheelIntegrator::reset()
 {
   has_reading_ = false;
   last_reading_s_ = 0.0;
-  right_velocity_ = left_velocity_ = 0.0;
-  right_position_ = left_position_ = 0.0;
+  right_ = State();
+  left_ = State();
 }
 
 void WheelIntegrator::forget_reading()
 {
   has_reading_ = false;
   last_reading_s_ = 0.0;
-  right_velocity_ = left_velocity_ = 0.0;
+  for (State * wheel : {&right_, &left_})
+  {
+    wheel->velocity = 0.0;
+    wheel->position = wheel->exact;
+  }
+}
+
+void WheelIntegrator::update(State & wheel, const WheelSample & sample, bool have_reference)
+{
+  if (have_reference)
+  {
+    // The difference of two uint16_t counters, read as int16_t, is right even
+    // when the counter wraps around 65535 -> 0.
+    const auto delta = static_cast<int16_t>(static_cast<uint16_t>(sample.count - wheel.last_count));
+    wheel.exact += delta * rad_per_count_;
+  }
+  wheel.last_count = sample.count;
+  wheel.velocity = sample.speed;
+  wheel.position = wheel.exact;
 }
 
 void WheelIntegrator::on_reading(double now_s, const WheelReading & reading)
 {
-  if (!reading.has_right || !reading.has_left)
+  if (!reading.complete())
   {
     return;
   }
-  right_velocity_ = reading.right;
-  left_velocity_ = reading.left;
+  update(right_, reading.right, has_reading_);
+  update(left_, reading.left, has_reading_);
   last_reading_s_ = now_s;
   has_reading_ = true;
 }
@@ -160,13 +193,19 @@ bool WheelIntegrator::advance(double now_s, double dt)
 {
   if (stale(now_s))
   {
-    right_velocity_ = left_velocity_ = 0.0;
+    for (State * wheel : {&right_, &left_})
+    {
+      wheel->velocity = 0.0;
+      wheel->position = wheel->exact;
+    }
     return true;
   }
   if (dt > 0.0 && dt < 1.0)
   {
-    right_position_ += right_velocity_ * dt;
-    left_position_ += left_velocity_ * dt;
+    for (State * wheel : {&right_, &left_})
+    {
+      wheel->position += wheel->velocity * dt;
+    }
   }
   return false;
 }

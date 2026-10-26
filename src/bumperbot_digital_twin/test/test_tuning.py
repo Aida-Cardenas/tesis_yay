@@ -2,7 +2,7 @@ import pytest
 
 from bumperbot_digital_twin.dynamics import FirstOrderModel, TwinModel
 from bumperbot_digital_twin.tuning import (
-    DEFAULT_GAINS, Scenario, load_gains_file, save_gains, scenarios_from, simulate, tune,
+    DEFAULT_GAINS, Scenario, closest_to_start, load_gains_file, save_gains, scenarios_from, simulate, tune,
 )
 
 REAL = TwinModel(FirstOrderModel(0.85, 0.3, 0.1), FirstOrderModel(0.85, 0.3, 0.1))
@@ -63,3 +63,13 @@ def test_tune_cli(tmp_path):
     assert load_gains_file(out)
     assert (tmp_path / "ganancias_informe.md").read_text().count("square/real/300ms") == 1
     assert (tmp_path / "ganancias.png").stat().st_size > 10000
+
+
+def test_near_ties_are_broken_toward_the_starting_gains():
+    far = {"kx": 1.5, "ky": 30.0, "ktheta": 3.0}
+    near_default = {"kx": 1.5, "ky": 5.0, "ktheta": 3.0}
+    history = [(DEFAULT_GAINS, 1.02), (far, 1.0), (near_default, 1.005)]
+    assert closest_to_start(history, DEFAULT_GAINS)[0] == near_default
+    history.append(({"kx": 1.5, "ky": 0.1, "ktheta": 3.0}, 0.5))
+    assert closest_to_start(history, DEFAULT_GAINS)[0]["ky"] == 0.1
+

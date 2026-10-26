@@ -32,6 +32,8 @@
                 <hardware>
                     <plugin>bumperbot_firmware/BumperbotInterface</plugin>
                     <param name="port">$(arg arduino_port)</param>
+                    <!-- Must match counts_per_rev in robot_control.ino -->
+                    <param name="encoder_counts_per_rev">770</param>
                 </hardware>
             </xacro:unless>
         </xacro:unless>

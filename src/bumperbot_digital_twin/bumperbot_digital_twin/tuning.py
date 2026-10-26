@@ -25,6 +25,12 @@ DEFAULT_GAINS = {"kx": 1.5, "ky": 6.0, "ktheta": 3.0}
 # el óptimo quedaba pegado a ellos: se ampliaron y el resultado avisa si alguna
 # ganancia termina en un límite (at_bounds).
 BOUNDS = {"kx": (0.05, 6.0), "ky": (0.05, 30.0), "ktheta": (0.05, 10.0)}
+# Desempate. Cuando el costo casi no cambia con una ganancia (en la simulación,
+# ky), el optimizador puede terminar en valores muy distintos de una corrida a
+# otra. Entre las combinaciones a menos de este margen del mejor costo se elige
+# la más cercana a las ganancias de partida: el resultado se puede repetir y solo
+# se aparta de los valores por defecto cuando eso mejora el costo de verdad.
+TIE_TOLERANCE = 0.01
 
 
 @dataclass
@@ -221,6 +227,18 @@ def _nelder_mead(f, x0, step=0.4, iters=60, tol=1e-4):
     return simplex[i], values[i]
 
 
+def closest_to_start(history, start, tolerance=TIE_TOLERANCE):
+    """(ganancias, costo) más cercanas a `start`, en escala logarítmica, entre las de `history`
+    cuyo costo no supera al mejor en más de `tolerance` (fracción)."""
+    best = min(cost for _, cost in history)
+    near = [(g, c) for g, c in history if c <= best * (1.0 + tolerance)]
+
+    def distance(gains):
+        return sum((math.log(gains[k]) - math.log(start[k])) ** 2 for k in ("kx", "ky", "ktheta"))
+
+    return min(near, key=lambda gc: (distance(gc[0]), gc[1]))
+
+
 @dataclass
 class TuningResult:
     gains: dict
@@ -258,14 +276,9 @@ def tune(scenarios, real_model=NOMINAL_MODEL, twin_model=NOMINAL_MODEL, limits=L
     for x in itertools.product(*axes):
         candidates.append((f(np.asarray(x)), np.asarray(x)))
     candidates.sort(key=lambda c: c[0])
-    best_x, best_cost = candidates[0][1], candidates[0][0]
     for _, x0 in candidates[:2]:
-        x, c = _nelder_mead(f, x0, iters=iters)
-        if c < best_cost:
-            best_x, best_cost = x, c
-    gains = _to_gains(best_x)
-    if default_cost <= best_cost:
-        gains, best_cost = dict(start), default_cost
+        _nelder_mead(f, x0, iters=iters)
+    gains, best_cost = closest_to_start(history, start)
     _, per = evaluate(gains, scenarios, real_model, twin_model, limits, weights)
     _, per_default = evaluate(start, scenarios, real_model, twin_model, limits, weights)
     per_scenario = [{"escenario": s.name, "rmse_antes": a.rmse, "rmse_despues": b.rmse,
@@ -309,4 +322,5 @@ def scenarios_from(patterns, followers, delays_ms, compensation=False, linear_sp
 
 
 __all__ = ["Scenario", "Limits", "CostWeights", "simulate", "evaluate", "tune", "save_gains",
-           "load_gains_file", "scenarios_from", "DEFAULT_GAINS", "BOUNDS", "TwinModel"]
+           "load_gains_file", "scenarios_from", "closest_to_start", "DEFAULT_GAINS", "BOUNDS",
+           "TIE_TOLERANCE", "TwinModel"]
