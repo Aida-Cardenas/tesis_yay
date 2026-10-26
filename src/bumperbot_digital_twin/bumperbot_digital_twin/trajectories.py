@@ -29,10 +29,8 @@ def build_segments(pattern, v, w, distance, radius, laps, pause):
         one = [(2 * math.pi * radius / v, v, v / radius)]
     elif pattern == "rotate":
         one = [(2 * math.pi / w, 0.0, w)]
-    elif pattern == "figure8":
-        one = [(2 * math.pi * radius / v, v, v / radius), *stop, (2 * math.pi * radius / v, v, -v / radius)]
     else:
-        raise ValueError(f"pattern debe ser uno de {PATTERNS}")
+        one = [(2 * math.pi * radius / v, v, v / radius), *stop, (2 * math.pi * radius / v, v, -v / radius)]
     segments = []
     for _ in range(laps):
         segments += one + stop

@@ -28,21 +28,11 @@ import threading
 import time
 from datetime import datetime
 
+from bumperbot_digital_twin.analyze_log import json_safe
 from bumperbot_digital_twin.navigation import ApprovalCriteria, TwinRun, approve, compare_paths, min_valid_range
 
 STATUS_NAMES = {0: "desconocido", 1: "aceptada", 2: "en curso", 3: "cancelando", 4: "lograda",
                 5: "cancelada", 6: "abortada"}
-
-
-def json_safe(value):
-    """Convierte NaN e infinito en null para que el JSON sea válido."""
-    if isinstance(value, float):
-        return value if math.isfinite(value) else None
-    if isinstance(value, dict):
-        return {k: json_safe(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [json_safe(v) for v in value]
-    return value
 
 
 def wait_future(future, timeout):
@@ -149,21 +139,26 @@ class NavSide:
         result = handle.get_result_async()
         path = []
         status = None
-        while True:
-            p = self.pose(timeout=0.5)
-            if p is not None:
-                path.append((time.monotonic() - t0, *p))
-            if result.done():
-                status = result.result().status
-                break
-            if time.monotonic() - t0 > timeout:
-                log(f"   [{self.name}] se acabó el tiempo; cancelo la meta")
-                cancel = handle.cancel_goal_async()
-                wait_future(cancel, 5.0)
-                wait_future(result, 5.0)
-                status = 5
-                break
-            time.sleep(0.1)
+        try:
+            while True:
+                p = self.pose(timeout=0.5)
+                if p is not None:
+                    path.append((time.monotonic() - t0, *p))
+                if result.done():
+                    status = result.result().status
+                    break
+                if time.monotonic() - t0 > timeout:
+                    log(f"   [{self.name}] se acabó el tiempo; cancelo la meta")
+                    wait_future(handle.cancel_goal_async(), 5.0)
+                    wait_future(result, 5.0)
+                    status = 5
+                    break
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            # Con Ctrl-C el robot no debe seguir navegando por su cuenta
+            log(f"   [{self.name}] interrumpido; cancelo la meta")
+            wait_future(handle.cancel_goal_async(), 5.0)
+            raise
         end = self.pose(timeout=1.0)
         if end is not None:
             path.append((time.monotonic() - t0, *end))
@@ -225,7 +220,7 @@ class NavPreview:
                 f"{execution.final_error * 100:.1f} cm de la meta")
             self.configure(close_log=True)
         else:
-            self.configure(align=True, resume_sync=True)
+            self.configure(align=True, resume_sync=True, close_log=True)
             log("   3/3 No se ejecuta en el robot real")
 
         result = {
@@ -256,7 +251,7 @@ def save_result(result, preview, execution, out_dir, plots):
     os.makedirs(out_dir, exist_ok=True)
     base = os.path.join(out_dir, f"vista_previa_{result['meta']}")
     with open(base + ".json", "w") as f:
-        json.dump(json_safe(result), f, indent=2, ensure_ascii=False, default=float)
+        json.dump(json_safe(result), f, indent=2, ensure_ascii=False)
     with open(base + ".csv", "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["robot", "t", "x", "y", "yaw"])
@@ -434,7 +429,7 @@ def main(argv=None):
             with open(os.path.join(out_dir, "informe_navegacion.md"), "w") as f:
                 f.write(md)
             with open(os.path.join(out_dir, "informe_navegacion.json"), "w") as f:
-                json.dump(json_safe(results), f, indent=2, ensure_ascii=False, default=float)
+                json.dump(json_safe(results), f, indent=2, ensure_ascii=False)
             print("\n" + md)
             print(f"Resultados en {out_dir}")
         dual.shutdown()

@@ -1,5 +1,6 @@
 #include "bumperbot_firmware/serial_protocol.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -36,7 +37,14 @@ bool parse_number(const std::string & text, double & value)
 
 void append_wheel(std::ostringstream & out, char wheel, double velocity)
 {
-  const double magnitude = std::abs(velocity);
+  // The sketch reads at most 5 characters per value ("dd.dd"): a NaN would be
+  // sent as "nan", whose 'n' the sketch takes as "reverse", and 100 or more would
+  // not fit. Both are kept inside what the sketch can read.
+  if (!std::isfinite(velocity))
+  {
+    velocity = 0.0;
+  }
+  const double magnitude = std::min(std::abs(velocity), 99.99);
   out << wheel << (velocity >= 0.0 ? 'p' : 'n') << (magnitude < 10.0 ? "0" : "")
       << std::fixed << std::setprecision(2) << magnitude << ",";
 }

@@ -26,12 +26,11 @@ import time
 from datetime import datetime
 
 import yaml
-from ament_index_python.packages import get_package_share_directory
 
 from bumperbot_msgs.srv import TwinConfigure
 from bumperbot_digital_twin.calibrate import fit_channel, plot_fit, read_identification_data
 from bumperbot_digital_twin.dynamics import TwinModel
-from bumperbot_digital_twin.report import build_report
+from bumperbot_digital_twin.report import build_report, resolve_protocol_path
 from bumperbot_digital_twin.session import RunQueue, Session, build_schedule, parse_answer
 from bumperbot_digital_twin.tuning import DEFAULT_GAINS, load_gains_file
 from bumperbot_digital_twin.ros_util import DualDomain, TrajectoryPlayer
@@ -59,16 +58,6 @@ DEFAULTS = {
 }
 
 
-def resolve_protocol(name):
-    if os.path.isfile(name):
-        return name
-    share = get_package_share_directory("bumperbot_digital_twin")
-    candidate = os.path.join(share, "config", name if name.endswith(".yaml") else name + ".yaml")
-    if os.path.isfile(candidate):
-        return candidate
-    raise FileNotFoundError(f"No encuentro el protocolo {name}")
-
-
 def load_protocol(path):
     with open(path) as f:
         protocol = yaml.safe_load(f)
@@ -89,10 +78,6 @@ class Runner:
         self.args = args
         self.protocol = protocol
         self.steps = steps
-        self.dual = DualDomain("twin_experiment", args.real_domain, args.twin_domain)
-        self.client = self.dual.nodes["twin"].create_client(TwinConfigure, "/digital_twin/configure")
-        self.player = TrajectoryPlayer(self.dual)
-        self.logs = {}
         self.model_path = None
         self.calibration_failed = False
         self.tuned_gains = None
@@ -100,12 +85,21 @@ class Runner:
         if getattr(args, "resume", None):
             self.session_dir = os.path.expanduser(args.resume)
             self.session = Session.load(self.session_dir)
+            started_with = self.session.get("protocolo")
+            if started_with and started_with != protocol.get("name", ""):
+                raise ValueError(f"La sesión {self.session_dir} es del protocolo {started_with}, no de "
+                                 f"{protocol.get('name', '')}: el orden de las corridas no coincidiría")
+            if args.repetitions is None:
+                args.repetitions = self.session.get("repeticiones")
         else:
             self.session_dir = os.path.expanduser(args.out or os.path.join(
                 "~/twin_resultados", f"{protocol.get('name', 'protocolo')}_{datetime.now():%Y%m%d_%H%M%S}"))
             self.session = Session(self.session_dir)
         self.logs = self.session.logs()
         self.last_item = None
+        self.dual = DualDomain("twin_experiment", args.real_domain, args.twin_domain)
+        self.client = self.dual.nodes["twin"].create_client(TwinConfigure, "/digital_twin/configure")
+        self.player = TrajectoryPlayer(self.dual)
 
     def configure(self, **kwargs):
         req = TwinConfigure.Request()
@@ -322,7 +316,8 @@ class Runner:
         seed = self.session.get("semilla")
         if seed is None:
             seed = self.args.seed if self.args.seed is not None else random.SystemRandom().randrange(10 ** 6)
-        self.session.data.update({"protocolo": self.protocol.get("name", ""), "semilla": seed})
+        self.session.data.update({"protocolo": self.protocol.get("name", ""), "semilla": seed,
+                                  "repeticiones": self.args.repetitions})
         self.session.save()
         only = set(self.args.only.split(",")) if self.args.only else None
         print(f"Protocolo: {self.protocol.get('name', '')} · semilla {seed} · resultados en {self.session_dir}")
@@ -430,8 +425,12 @@ def main(argv=None):
     parser.add_argument("--ignore-clock", action="store_true", help="Seguir aunque los relojes difieran")
     parser.add_argument("--no-plots", action="store_true")
     args = parser.parse_args(argv)
-    protocol, steps = load_protocol(resolve_protocol(args.protocol))
-    runner = Runner(args, protocol, steps)
+    protocol, steps = load_protocol(resolve_protocol_path(args.protocol))
+    try:
+        runner = Runner(args, protocol, steps)
+    except (OSError, ValueError) as exc:
+        print(f"ERROR: {exc}")
+        return 1
     try:
         return runner.run()
     except KeyboardInterrupt:

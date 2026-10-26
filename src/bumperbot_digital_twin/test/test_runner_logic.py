@@ -101,3 +101,13 @@ def test_calibration_closes_the_log_instead_of_opening_one(tmp_path):
     r.calibrate({"calibrate_from": ["E1"]})
     assert r.calls and r.calls[0] == {"close_log": True}
     assert not any(c.get("new_log") for c in r.calls)
+
+
+def test_resume_refuses_a_session_of_another_protocol(tmp_path):
+    from bumperbot_digital_twin.session import Session
+    s = Session(str(tmp_path))
+    s.data.update({"protocolo": "protocolo_ci", "semilla": 1, "repeticiones": 2})
+    s.save()
+    args = argparse.Namespace(resume=str(tmp_path), repetitions=None, out=None, real_domain=10, twin_domain=20)
+    with pytest.raises(ValueError, match="protocolo_ci"):
+        Runner(args, {"name": "protocolo_real"}, [])

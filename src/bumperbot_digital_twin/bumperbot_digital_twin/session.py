@@ -16,10 +16,20 @@ corridas completas y válidas.
 import json
 import os
 import random
+import re
 from collections import deque
 from datetime import datetime
 
 SESSION_FILE = "sesion.json"
+
+
+def safe_log_tag(tag):
+    """Etiqueta apta para un nombre de archivo: letras, números, punto, guion y guion bajo.
+
+    El puente arma el nombre del registro con la etiqueta que le llega por un
+    servicio; sin limpiarla, una etiqueta como "../../x" escribiría fuera de log_dir.
+    """
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", str(tag or "")).strip("._")[:80]
 
 
 def repetitions(step, override=None):

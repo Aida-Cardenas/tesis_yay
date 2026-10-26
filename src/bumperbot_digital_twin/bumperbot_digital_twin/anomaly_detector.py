@@ -25,12 +25,8 @@ from std_msgs.msg import Bool
 from bumperbot_msgs.msg import TwinAnomaly
 from bumperbot_digital_twin.anomaly import AnomalyDetector, DetectorConfig, StallLock
 from bumperbot_digital_twin.dynamics import NOMINAL_MODEL, TwinModel
+from bumperbot_digital_twin.ros_util import require_positive, spin_node
 
-
-def require_positive(**values):
-    for name, value in values.items():
-        if not value > 0:
-            raise ValueError(f"{name} debe ser mayor que 0 (vale {value})")
 
 class AnomalyDetectorNode(Node):
     def __init__(self):
@@ -135,15 +131,7 @@ class AnomalyDetectorNode(Node):
 
 def main():
     rclpy.init()
-    node = AnomalyDetectorNode()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+    spin_node(AnomalyDetectorNode())
 
 
 if __name__ == "__main__":

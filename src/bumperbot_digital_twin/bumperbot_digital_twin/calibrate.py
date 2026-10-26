@@ -17,7 +17,6 @@ arena:    genera un mundo de Gazebo con un recinto rectangular igual al de tus
 """
 import argparse
 import csv
-import math
 import os
 import sys
 

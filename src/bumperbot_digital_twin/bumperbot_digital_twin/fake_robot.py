@@ -29,6 +29,7 @@ from sensor_msgs.msg import Imu, LaserScan
 from tf2_ros import TransformBroadcaster
 
 from bumperbot_digital_twin.geometry import Pose2D, integrate_unicycle
+from bumperbot_digital_twin.ros_util import require_positive, spin_node
 from bumperbot_digital_twin.scan_compare import raycast_rectangle
 
 MUX_INPUTS = (("joy_vel", 99), ("twin_vel", 95), ("key_vel", 90), ("cmd_vel", 80))
@@ -38,11 +39,6 @@ SCAN_BEAMS = 360
 def quaternion_z(theta):
     return math.sin(theta / 2.0), math.cos(theta / 2.0)
 
-
-def require_positive(**values):
-    for name, value in values.items():
-        if not value > 0:
-            raise ValueError(f"{name} debe ser mayor que 0 (vale {value})")
 
 class FakeRobot(Node):
     def __init__(self):
@@ -207,15 +203,7 @@ class FakeRobot(Node):
 
 def main():
     rclpy.init()
-    node = FakeRobot()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+    spin_node(FakeRobot())
 
 
 if __name__ == "__main__":

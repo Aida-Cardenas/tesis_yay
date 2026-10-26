@@ -38,7 +38,6 @@ bool is_right_wheel_forward = true;
 bool is_left_wheel_forward = true;
 char value[] = "00.00";
 uint8_t value_idx = 0;
-bool is_cmd_complete = false;
 
 // After a change of direction the PWM is held at 0 for one control cycle and
 // the PID starts again from zero, so the motor is never reversed at full duty.
@@ -114,7 +113,6 @@ void loop() {
       is_right_wheel_cmd = true;
       is_left_wheel_cmd = false;
       value_idx = 0;
-      is_cmd_complete = false;
     }
     // Left Wheel Mo tor
     else if(chr == 'l')
@@ -177,7 +175,6 @@ void loop() {
       else if(is_left_wheel_cmd)
       {
         left_wheel_cmd_vel = atof(value);
-        is_cmd_complete = true;
         last_cmd_millis = millis();
       }
       // Reset for next command

@@ -102,7 +102,6 @@ class AnomalyDetector:
         self.last_cmd_t = None
         self.t_prev = None
         self.cusum = {"v+": 0.0, "v-": 0.0, "w+": 0.0, "w-": 0.0}
-        self.last_values = {}
 
     @property
     def active(self):
@@ -150,7 +149,6 @@ class AnomalyDetector:
             "movimiento_no_comandado": max(abs(meas_v), abs(meas_w)),
             "desviacion_modelo": max(sv / c.cusum_h_v, sw / c.cusum_h_w),
         }
-        self.last_values = values
         events = []
         for kind, cond in (("atasco", stall), ("deslizamiento", slip),
                            ("movimiento_no_comandado", unexpected), ("desviacion_modelo", deviation)):

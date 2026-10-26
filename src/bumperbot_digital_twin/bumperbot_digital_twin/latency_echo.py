@@ -12,6 +12,8 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Header
 
+from bumperbot_digital_twin.ros_util import spin_node
+
 
 class LatencyEcho(Node):
     def __init__(self):
@@ -29,15 +31,7 @@ class LatencyEcho(Node):
 
 def main():
     rclpy.init()
-    node = LatencyEcho()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+    spin_node(LatencyEcho())
 
 
 if __name__ == "__main__":

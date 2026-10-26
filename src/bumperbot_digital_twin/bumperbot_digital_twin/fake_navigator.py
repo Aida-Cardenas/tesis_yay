@@ -22,6 +22,7 @@ from tf2_ros import StaticTransformBroadcaster
 
 from bumperbot_digital_twin.geometry import yaw_from_quaternion
 from bumperbot_digital_twin.navigation import GoToGoalGains, go_to_goal, inside_arena
+from bumperbot_digital_twin.ros_util import spin_node
 
 
 class FakeNavigator(Node):
@@ -104,18 +105,7 @@ class FakeNavigator(Node):
 
 def main():
     rclpy.init()
-    node = FakeNavigator()
-    executor = MultiThreadedExecutor(num_threads=3)
-    executor.add_node(node)
-    try:
-        executor.spin()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        executor.shutdown()
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+    spin_node(FakeNavigator(), executor=MultiThreadedExecutor(num_threads=3))
 
 
 if __name__ == "__main__":

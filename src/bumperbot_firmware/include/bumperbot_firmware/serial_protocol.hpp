@@ -24,7 +24,8 @@ struct WheelReading
 // (se cuentan en `rejected`) en lugar de lanzar una excepción.
 WheelReading parse_wheel_message(const std::string & message);
 
-// Arma el comando para el Arduino con la velocidad de cada rueda en rad/s.
+// Arma el comando para el Arduino con la velocidad de cada rueda en rad/s. Un
+// valor no finito se envía como 0 y la magnitud se limita a 99.99.
 std::string format_wheel_command(double right, double left);
 
 // Saca de `buffer` la última línea completa (sin el '\n') y deja lo que viene

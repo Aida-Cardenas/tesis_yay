@@ -128,3 +128,12 @@ def test_compared_pairs_are_interleaved_and_calibration_is_tested_out_of_sample(
         assert a in group_of and group_of.get(a) == group_of.get(b), (name, a, b)
         if steps[a].get("twin_model") or steps[b].get("twin_model"):
             assert not {a, b} & set(cal["calibrate_from"]), (name, a, b)
+
+
+def test_log_tags_cannot_leave_the_log_folder():
+    from bumperbot_digital_twin.session import safe_log_tag
+    assert safe_log_tag("E1_r2") == "E1_r2"
+    assert safe_log_tag("M1_vista-2") == "M1_vista-2"
+    assert "/" not in safe_log_tag("../../etc/x") and not safe_log_tag("../../etc/x").startswith(".")
+    assert safe_log_tag("") == "" and safe_log_tag(None) == ""
+    assert len(safe_log_tag("a" * 500)) == 80

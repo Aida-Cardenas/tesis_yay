@@ -93,7 +93,10 @@ private:
     state_ = State::FREE;
     for (const auto &range : msg.ranges)
     {
-      if (!std::isinf(range) && range <= warning_distance_)
+      // Readings outside [range_min, range_max] are not valid (NaN, inf, or the
+      // sensor seeing the robot itself) and must not lock the robot.
+      if (std::isfinite(range) && range >= msg.range_min && range <= msg.range_max &&
+          range <= warning_distance_)
       {
         state_ = State::WARNING;
         

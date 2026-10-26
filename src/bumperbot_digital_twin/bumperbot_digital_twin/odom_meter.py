@@ -15,6 +15,7 @@ from rclpy.node import Node
 from nav_msgs.msg import Odometry
 
 from bumperbot_digital_twin.geometry import wrap_angle, yaw_from_quaternion
+from bumperbot_digital_twin.ros_util import spin_node
 
 
 class OdomMeter(Node):
@@ -58,15 +59,7 @@ class OdomMeter(Node):
 def main():
     rclpy.init()
     node = OdomMeter()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        print("\n\nResultado final: " + node.summary())
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+    spin_node(node, on_exit=lambda: print("\n\nResultado final: " + node.summary()))
     return 0
 
 

@@ -132,7 +132,9 @@ CallbackReturn BumperbotInterface::on_activate(const rclcpp_lifecycle::State &)
   catch (...)
   {
     RCLCPP_FATAL_STREAM(rclcpp::get_logger("BumperbotInterface"),
-                        "Something went wrong while interacting with port " << port_);
+                        "Could not open " << port_ << ". Check the USB cable, the udev rule "
+                        "(ls -l /dev/arduino), that your user is in the dialout group and that no "
+                        "other program (e.g. the Arduino serial monitor) is using the port");
     return CallbackReturn::FAILURE;
   }
 

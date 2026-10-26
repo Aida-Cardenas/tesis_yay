@@ -8,12 +8,49 @@ import time
 
 import rclpy
 from rclpy.context import Context
-from rclpy.executors import SingleThreadedExecutor
+from rclpy.executors import ExternalShutdownException, SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from geometry_msgs.msg import Twist
 
 from bumperbot_digital_twin.trajectories import build_segments
+
+
+def require_positive(**values):
+    for name, value in values.items():
+        if not value > 0:
+            raise ValueError(f"{name} debe ser mayor que 0 (vale {value})")
+
+
+def spin_node(node, executor=None, on_exit=None):
+    """Atiende un nodo hasta Ctrl-C o hasta que launch lo cierre, sin trazas al salir.
+
+    Al cerrar con launch, rclpy apaga el contexto y un temporizador que justo publicaba
+    lanza una excepción: eso no es un error del nodo. `on_exit` corre antes de
+    destruir el nodo (por ejemplo, para imprimir un resultado final).
+    """
+    try:
+        if executor is None:
+            rclpy.spin(node)
+        else:
+            executor.add_node(node)
+            executor.spin()
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
+    except Exception:
+        if rclpy.ok():
+            raise
+    finally:
+        if on_exit is not None:
+            try:
+                on_exit()
+            except Exception:
+                pass
+        if executor is not None:
+            executor.shutdown()
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 class SpinThread:
@@ -139,7 +176,13 @@ class TrajectoryPlayer:
         return sum(s[0] for s in segments)
 
     def stop(self):
+        """Detiene el recorrido y manda velocidad cero a los dos robots."""
         self.stop_flag.set()
+        for pub in self.pubs.values():
+            try:
+                pub.publish(Twist())
+            except Exception:
+                pass
 
     @property
     def running(self):

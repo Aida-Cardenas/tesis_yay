@@ -73,6 +73,10 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        try:
+            node.pub.publish(Twist())
+        except Exception:
+            pass
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

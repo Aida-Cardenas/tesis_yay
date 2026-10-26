@@ -36,7 +36,6 @@ import time
 from collections import deque
 from datetime import datetime
 
-import numpy as np
 import rclpy
 from rclpy.context import Context
 from rclpy.executors import SingleThreadedExecutor
@@ -72,6 +71,7 @@ from bumperbot_digital_twin.geometry import (
 from bumperbot_digital_twin.netem import NetworkEmulator
 from bumperbot_digital_twin.ros_util import SpinThread, shutdown_all
 from bumperbot_digital_twin.scan_compare import bin_scan, compare_scans, scan_gate
+from bumperbot_digital_twin.session import safe_log_tag
 from bumperbot_digital_twin.tuning import load_gains_file
 
 SIDES = ("real", "twin")
@@ -432,7 +432,8 @@ class TwinBridge:
     def _open_log(self):
         log_dir = os.path.expanduser(self.p["log_dir"])
         os.makedirs(log_dir, exist_ok=True)
-        tag = f"_{self.p['log_tag']}" if self.p["log_tag"] else ""
+        tag = safe_log_tag(self.p["log_tag"])
+        tag = f"_{tag}" if tag else ""
         stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         base = os.path.join(log_dir, f"twin_{stamp}{tag}")
         n = 2

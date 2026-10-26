@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <cmath>
 
 #include "bumperbot_firmware/serial_protocol.hpp"
 
@@ -183,4 +184,11 @@ TEST(WheelIntegrator, ForgetReadingKeepsThePosition)
   w.on_reading(0.3, parse_wheel_message("rp01.00,lp01.00,"));
   EXPECT_FALSE(w.advance(0.4, 0.1));
   EXPECT_NEAR(w.right_position(), 0.6, 1e-9);
+}
+
+TEST(SerialProtocol, CommandIsAlwaysReadableByTheSketch)
+{
+  EXPECT_EQ(format_wheel_command(std::nan(""), 1.0), "rp00.00,lp01.00,");
+  EXPECT_EQ(format_wheel_command(INFINITY, -INFINITY), "rp00.00,lp00.00,");
+  EXPECT_EQ(format_wheel_command(150.0, -150.0), "rp99.99,ln99.99,");
 }

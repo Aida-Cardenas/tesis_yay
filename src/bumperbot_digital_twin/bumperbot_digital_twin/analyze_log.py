@@ -27,6 +27,19 @@ import numpy as np
 NUMERIC_TEXT = ("leader", "anomalies")
 
 
+def json_safe(value):
+    """Convierte NaN e infinito en null para que el JSON sea válido."""
+    if isinstance(value, (float, np.floating)):
+        return float(value) if math.isfinite(value) else None
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, dict):
+        return {k: json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(v) for v in value]
+    return value
+
+
 def gains_text(d):
     if not all(k in d for k in ("kx", "ky", "ktheta")):
         return "—"
@@ -349,7 +362,7 @@ def main(argv=None):
     os.makedirs(args.out, exist_ok=True)
     summaries = [analyze(p, args.out, plots=not args.no_plots) for p in paths]
     with open(os.path.join(args.out, "resumen.json"), "w") as f:
-        json.dump(summaries, f, indent=2, ensure_ascii=False)
+        json.dump(json_safe(summaries), f, indent=2, ensure_ascii=False)
     table = markdown(summaries)
     with open(os.path.join(args.out, "resumen.md"), "w") as f:
         f.write(table)

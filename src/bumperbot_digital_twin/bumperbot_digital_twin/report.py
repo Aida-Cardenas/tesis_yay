@@ -18,7 +18,7 @@ from collections import OrderedDict
 
 import numpy as np
 
-from bumperbot_digital_twin.analyze_log import analyze
+from bumperbot_digital_twin.analyze_log import analyze, json_safe
 
 TAG_RE = re.compile(r"twin_\d{8}_\d{6}_(?P<tag>.+)\.csv$")
 RUN_RE = re.compile(r"^(?P<exp>.+?)_r(?P<rep>\d+)(?:-\d+)?$")
@@ -388,8 +388,8 @@ def build_report(csv_paths, out_dir, protocol=None, plots=True):
     with open(os.path.join(out_dir, "informe.md"), "w") as f:
         f.write(report_md)
     with open(os.path.join(out_dir, "informe.json"), "w") as f:
-        json.dump({"experimentos": table, "comparaciones": results_cmp,
-                   "corridas": {k: v for k, v in groups.items()}}, f, indent=2, ensure_ascii=False, default=str)
+        json.dump(json_safe({"experimentos": table, "comparaciones": results_cmp, "corridas": dict(groups)}),
+                  f, indent=2, ensure_ascii=False, default=str)
     return report_md, table, results_cmp
 
 
