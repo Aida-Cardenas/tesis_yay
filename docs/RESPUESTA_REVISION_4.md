@@ -2,7 +2,7 @@
 
 Qué se hizo con cada punto de la cuarta revisión (24 de octubre de 2026). Las respuestas anteriores están en [`RESPUESTA_REVISION.md`](RESPUESTA_REVISION.md), [`RESPUESTA_REVISION_2.md`](RESPUESTA_REVISION_2.md) y [`RESPUESTA_REVISION_3.md`](RESPUESTA_REVISION_3.md).
 
-**Resultado de CI:** corrida del 26 de octubre de 2026 (commit `54c6e7c`), todas las pruebas aprobadas, incluidas Gazebo con Nav2 (sin reintento), el robot con hardware simulado con Nav2 en `active [3]` y el sketch compilado para Uno y Nano. Números en `GEMELO_DIGITAL.md`, sección 14.
+**Resultado de CI:** corridas del 26 de octubre de 2026, todas las pruebas aprobadas: el robot con hardware simulado con Nav2 en `active [3]`, el sketch compilado para Uno y Nano, y Gazebo con Nav2. Gazebo pasó al primer intento en `54c6e7c`; en `da36973` necesitó el reintento (falló la vista previa de navegación del primer intento) y el aviso nuevo lo mostró. Los números de `GEMELO_DIGITAL.md`, sección 14, son los de `54c6e7c`.
 
 ## Alta
 
@@ -50,7 +50,7 @@ Qué se hizo con cada punto de la cuarta revisión (24 de octubre de 2026). Las 
 
 ## Punto abierto: la sintonización
 
-Con los límites ampliados, el optimizador eligió ky = 4,1 (antes estaba limitado a 0,5). En la simulación de la sintonización, ky casi no cambia el costo: 11,4 cm de error con ky = 0,5 y 11,5 cm con ky = 4,1, también con más retardo. Con el robot de mentira de CI, en cambio, RT dio 17,0 cm (antes 12,5 cm) y la mejora frente a R ya no es clara (p = 0,31, con n = 2). La simulación no capta algo que sí afecta al robot de mentira con ky alto. No se forzó ky bajo para recuperar el resultado anterior: G0T y L250RT con el robot físico dirán cuánto valen las ganancias sintonizadas, y la tesis lo reporta tal cual.
+Con los límites ampliados, el optimizador eligió ky = 4,1 (antes estaba limitado a 0,5). En la simulación de la sintonización, ky casi no cambia el costo: 11,4 cm de error con ky = 0,5 y 11,5 cm con ky = 4,1, también con más retardo. Con el robot de mentira de CI, en cambio, RT dio 17,0 cm (antes 12,5 cm) y la mejora frente a R ya no es clara (p = 0,31, con n = 2). La simulación no capta algo que sí afecta al robot de mentira con ky alto. En la corrida de CI siguiente (commit `da36973`), el optimizador terminó en ky = 0,5 y RT volvió a 12,6 cm (p = 0,024): el resultado depende de dónde termina la búsqueda en una dirección que la simulación no distingue. No se forzó ky bajo para recuperar el resultado anterior: G0T y L250RT con el robot físico dirán cuánto valen las ganancias sintonizadas, y la tesis lo reporta tal cual.
 
 ## Lo que sigue en el robot
 
