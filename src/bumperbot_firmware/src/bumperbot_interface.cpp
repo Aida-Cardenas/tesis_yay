@@ -196,7 +196,13 @@ bool BumperbotInterface::tryReconnect(double now)
                          "Could not reopen %s, retrying every 2 s", port_.c_str());
     return false;
   }
+  // Reopening the port resets the Arduino again: wait for its first line before
+  // sending commands, as after on_activate. The wheel positions are kept.
   rx_buffer_.clear();
+  wheels_.forget_reading();
+  waiting_reported_ = false;
+  stale_reported_ = false;
+  activated_at_ = now;
   port_failed_ = false;
   RCLCPP_INFO(rclcpp::get_logger("BumperbotInterface"), "Reconnected to %s", port_.c_str());
   return true;
@@ -262,7 +268,7 @@ hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
     if (now - activated_at_ > 3.0)
     {
       RCLCPP_WARN_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 5000,
-                           "No data from the Arduino %.0f s after start. Check the cable and the sketch",
+                           "No data from the Arduino %.0f s after start. Check the cable, the sketch and the baud rate (115200)",
                            now - activated_at_);
     }
   }
@@ -289,14 +295,18 @@ hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
 hardware_interface::return_type BumperbotInterface::write(const rclcpp::Time &,
                                                           const rclcpp::Duration &)
 {
-  if (port_failed_)
+  // Nothing is sent until the Arduino has answered once. Opening the port
+  // resets the board, and bytes arriving while its bootloader runs can keep an
+  // old Nano bootloader waiting for a firmware upload instead of starting the
+  // sketch. The sketch stops the motors by itself without commands.
+  if (port_failed_ || !wheels_.has_reading())
   {
     return hardware_interface::return_type::OK;
   }
   // Without feedback for more than 1 s (after the first reading) the robot is
   // told to stop, instead of driving on commands it cannot check.
   const double now = clock_->now().seconds();
-  const bool no_feedback = wheels_.has_reading() && wheels_.seconds_since_reading(now) > 1.0;
+  const bool no_feedback = wheels_.seconds_since_reading(now) > 1.0;
   double right = velocity_commands_.at(right_index_);
   double left = velocity_commands_.at(left_index_);
   if (no_feedback)

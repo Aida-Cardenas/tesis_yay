@@ -8,7 +8,8 @@
 # Verificar los IDs de TUS dispositivos con:  lsusb
 #   RPLidar A1 (adaptador Silicon Labs CP210x) -> 10c4:ea60
 #   Arduino clon (chip CH340)                  -> 1a86:7523
-#   Arduino UNO original                       -> 2341:0043 (aparece como ttyACM*, descomentar la última línea)
+#   Arduino Nano con chip FTDI FT232           -> 0403:6001
+#   Arduino UNO original                       -> 2341:0043 (aparece como ttyACM*)
 #
 # Ojo: el CH340 también se usa en otros adaptadores USB-serie. Si conectas otro
 # aparato con ese chip, los dos se pelearían el nombre /dev/arduino. Muchos CH340
@@ -18,4 +19,5 @@
 KERNEL=="ttyUSB*", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", GROUP="dialout", MODE:="0666", SYMLINK+="rplidar"
 
 KERNEL=="ttyUSB*", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", GROUP="dialout", MODE:="0666", SYMLINK+="arduino"
-# KERNEL=="ttyACM*", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0043", GROUP="dialout", MODE:="0666", SYMLINK+="arduino"
+KERNEL=="ttyUSB*", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", GROUP="dialout", MODE:="0666", SYMLINK+="arduino"
+KERNEL=="ttyACM*", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0043", GROUP="dialout", MODE:="0666", SYMLINK+="arduino"

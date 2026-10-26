@@ -46,6 +46,9 @@ class WheelIntegrator
 public:
   explicit WheelIntegrator(double timeout_s = 0.3);
   void reset();
+  // Olvida la última lectura (vuelve a esperar la primera) pero conserva la
+  // posición de las ruedas, para que la odometría no salte al reconectar.
+  void forget_reading();
   void on_reading(double now_s, const WheelReading & reading);
   // Avanza dt segundos. Devuelve true si los datos están vencidos.
   bool advance(double now_s, double dt);

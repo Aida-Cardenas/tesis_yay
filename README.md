@@ -54,6 +54,26 @@ source install/setup.bash
 
 Recomendado: agregar `source ~/tesis_ws/install/setup.bash` al final de `~/.bashrc`.
 
+### En la Raspberry Pi
+
+Probado para Ubuntu Server 22.04 de 64 bits con `ros-humble-ros-base`.
+
+1. **Instalar y compilar.** La compilación completa en paralelo puede quedarse sin memoria en una Pi (se cuelga o el compilador muere con `Killed`). Se compila de a un paquete y un proceso a la vez:
+   ```bash
+   ./install_dependencies.sh robot <IP del PC>
+   MAKEFLAGS=-j1 colcon build --parallel-workers 1
+   source install/setup.bash
+   ```
+   Con 2 GB de RAM o menos conviene además activar 2 GB de swap antes de compilar (`sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`).
+2. **Cerrar la sesión y volver a entrar** (o reiniciar), para que el usuario quede de verdad en los grupos `dialout` (Arduino y LiDAR) e `i2c` (IMU). Comprobar con `groups`.
+3. **I2C para la IMU.** Debe existir `/dev/i2c-1` y el MPU6050 debe responder en la dirección 68:
+   ```bash
+   ls /dev/i2c-1
+   sudo apt install -y i2c-tools && i2cdetect -y 1
+   ```
+   Si no existe `/dev/i2c-1`, agregar `dtparam=i2c_arm=on` a `/boot/firmware/config.txt` y reiniciar. Si `i2cdetect` no muestra `68`, revisar SDA (GPIO 2, pin 3), SCL (GPIO 3, pin 5), 3,3 V y GND.
+4. **Red.** El PC y la Pi en la misma red, con el mismo `ROS_DOMAIN_ID` y sin `ROS_LOCALHOST_ONLY=1`. Comprobar con `ros2 topic list` en el PC mientras corre algo en la Pi.
+
 ## Uso en simulación (gemelo digital en Gazebo)
 
 **Localización con AMCL + navegación** en el recinto de pruebas `arena`:
@@ -109,7 +129,7 @@ Luego se usa con `map_name:=mi_mapa`.
 
 ## Uso con el robot real
 
-1. **Firmware.** Cargar `src/bumperbot_firmware/firmware/robot_control/robot_control.ino` en el Arduino con el Arduino IDE. Si un motor gira al revés, se invierten sus dos cables en el L298N; si un encoder cuenta al revés, se intercambian sus fases A y B.
+1. **Firmware.** Cargar `src/bumperbot_firmware/firmware/robot_control/robot_control.ino` en el Arduino con el Arduino IDE (necesita la biblioteca **PID** de Brett Beauregard, desde el gestor de bibliotecas). En los Nano clones, si la carga falla con `not in sync`, elegir *Procesador: ATmega328P (Old Bootloader)*. El monitor serie va a 115200 baudios. Si un motor gira al revés, se invierten sus dos cables en el L298N; si un encoder cuenta al revés, se intercambian sus fases A y B.
 2. **Reglas udev** (en la Raspberry Pi, una sola vez). Revisar los IDs con `lsusb` y ajustar el archivo si hace falta:
    ```bash
    sudo cp udev/90-bumperbot.rules /etc/udev/rules.d/
@@ -126,7 +146,9 @@ Luego se usa con `map_name:=mi_mapa`.
    ```bash
    ros2 launch bumperbot_bringup real_robot.launch.py use_slam:=true
    ```
-   Sin udev, se puede indicar el puerto a mano: `arduino_port:=/dev/ttyUSB0`.
+   Sin udev, se puede indicar el puerto a mano: `arduino_port:=/dev/ttyUSB0`. El monitor serie del Arduino IDE tiene que estar cerrado: dos programas no pueden usar el puerto a la vez.
+
+   Al arrancar es normal ver "Waiting for the first data from the Arduino" durante uno o dos segundos (abrir el puerto reinicia el Arduino). Si después aparece "No data from the Arduino", revisar el cable, que el sketch esté cargado y los 115200 baudios. Si el LiDAR no está conectado, su nodo se reinicia cada 3 s hasta que aparezca `/dev/rplidar`; el resto del robot sigue funcionando.
 5. **Comprobar el sentido de giro, antes de cualquier otra prueba.** Si el robot estaba cableado para el sketch "invertido" del curso, con el sketch actual puede andar hacia atrás mientras la odometría de las ruedas parece correcta (los encoders se invierten junto con los motores). Solo la IMU y el LiDAR lo delatan.
    1. *Hacia adelante, sin ROS.* Con `real_robot.launch.py` cerrado, abrir el monitor serie del Arduino IDE a 115200 baudios y enviar `rp03.00,lp03.00,` varias veces seguidas (el Arduino frena las ruedas si pasa medio segundo sin comandos). El robot debe avanzar hacia su frente y las respuestas deben empezar con `rp` y traer `lp` (signo positivo en ambas ruedas). Si una rueda gira hacia atrás, se invierten los dos cables de ese motor en el L298N; si gira hacia adelante pero responde con `n`, se intercambian las fases A y B de su encoder.
    2. *Giro, con ROS.* Lanzar `real_robot.launch.py` y en otra terminal:

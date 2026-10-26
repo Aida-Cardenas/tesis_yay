@@ -24,6 +24,7 @@ GYRO_ZOUT_H  = 0x47
 DEVICE_ADDRESS = 0x68
 WHEEL_STILL_RAD_S = 0.05
 WHEEL_STILL_HOLD_S = 0.3
+I2C_RETRY_S = 1.0
 
 
 class MPU6050_Driver(Node):
@@ -33,6 +34,8 @@ class MPU6050_Driver(Node):
         
         # I2C Interafce
         self.is_connected_ = False
+        self.bus_ = None
+        self.last_init_try_ = None
         self.init_i2c()
 
         # ROS 2 Interface
@@ -65,6 +68,10 @@ class MPU6050_Driver(Node):
     def timerCallback(self):
         try:
             if not self.is_connected_:
+                now = self.get_clock().now()
+                if (self.last_init_try_ is not None
+                        and (now - self.last_init_try_).nanoseconds * 1e-9 < I2C_RETRY_S):
+                    return
                 self.init_i2c()
                 if not self.is_connected_:
                     return
@@ -108,8 +115,15 @@ class MPU6050_Driver(Node):
             self.is_connected_ = False
 
     def init_i2c(self):
+        self.last_init_try_ = self.get_clock().now()
         try:
             import smbus
+            if self.bus_ is not None:
+                try:
+                    self.bus_.close()
+                except OSError:
+                    pass
+                self.bus_ = None
             self.bus_ = smbus.SMBus(1)
             self.bus_.write_byte_data(DEVICE_ADDRESS, SMPLRT_DIV, 7)
             self.bus_.write_byte_data(DEVICE_ADDRESS, PWR_MGMT_1, 1)
@@ -120,9 +134,16 @@ class MPU6050_Driver(Node):
             self.is_connected_ = True
         except (OSError, ImportError) as exc:
             if not getattr(self, "warned_", False):
-                self.get_logger().warn(f"No se pudo iniciar la IMU por I2C: {exc}")
+                self.get_logger().warn(
+                    f"No se pudo iniciar la IMU por I2C ({exc}). Revisa que exista /dev/i2c-1, "
+                    "que el usuario esté en el grupo i2c y que `i2cdetect -y 1` muestre 68. "
+                    "Reintentando cada segundo")
                 self.warned_ = True
             self.is_connected_ = False
+            return
+        if getattr(self, "warned_", False):
+            self.get_logger().info("IMU conectada")
+            self.warned_ = False
 
 
 def main():

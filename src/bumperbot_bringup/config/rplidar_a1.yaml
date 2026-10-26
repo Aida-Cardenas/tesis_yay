@@ -6,4 +6,8 @@ rplidar_node:
     frame_id: laser_link
     inverted: false
     angle_compensate: true
-    scan_mode: Sensitivity
+    # Vacío = el modo típico del sensor, que todo A1 tiene. Un modo que el
+    # firmware no soporta (p. ej. Sensitivity en un A1M8 viejo) hace que el nodo
+    # termine con "Can not start scan". `ros2 run rplidar_ros rplidar_node` lista
+    # los modos del tuyo al arrancar.
+    scan_mode: ""

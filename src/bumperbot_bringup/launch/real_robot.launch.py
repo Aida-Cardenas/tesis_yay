@@ -72,7 +72,11 @@ def generate_launch_description():
                 "config",
                 "rplidar_a1.yaml"
             )],
-            output="screen"
+            output="screen",
+            # The driver exits if /dev/rplidar is not there yet (USB still
+            # enumerating, cable loose); it is started again instead.
+            respawn=True,
+            respawn_delay=3.0,
     )
     
     controller = IncludeLaunchDescription(
@@ -107,7 +111,8 @@ def generate_launch_description():
 
     imu_driver_node = Node(
         package="bumperbot_firmware",
-        executable="mpu6050_driver.py"
+        executable="mpu6050_driver.py",
+        output="screen",
     )
 
     ekf = IncludeLaunchDescription(

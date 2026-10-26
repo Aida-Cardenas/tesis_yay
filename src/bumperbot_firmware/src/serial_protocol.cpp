@@ -119,6 +119,13 @@ void WheelIntegrator::reset()
   right_position_ = left_position_ = 0.0;
 }
 
+void WheelIntegrator::forget_reading()
+{
+  has_reading_ = false;
+  last_reading_s_ = 0.0;
+  right_velocity_ = left_velocity_ = 0.0;
+}
+
 void WheelIntegrator::on_reading(double now_s, const WheelReading & reading)
 {
   if (!reading.has_right || !reading.has_left)

@@ -167,3 +167,20 @@ TEST(WheelIntegrator, OneWheelReadingsDoNotKeepTheDataAlive)
   EXPECT_DOUBLE_EQ(w.left_velocity(), 0.0);
   EXPECT_TRUE(w.has_reading());
 }
+
+TEST(WheelIntegrator, ForgetReadingKeepsThePosition)
+{
+  WheelIntegrator w(0.3);
+  w.on_reading(0.0, parse_wheel_message("rp05.00,ln02.00,"));
+  w.advance(0.1, 0.1);
+  w.forget_reading();
+  EXPECT_FALSE(w.has_reading());
+  EXPECT_DOUBLE_EQ(w.right_velocity(), 0.0);
+  EXPECT_NEAR(w.right_position(), 0.5, 1e-9);
+  EXPECT_NEAR(w.left_position(), -0.2, 1e-9);
+  EXPECT_TRUE(w.advance(0.2, 0.1));
+  EXPECT_NEAR(w.right_position(), 0.5, 1e-9);
+  w.on_reading(0.3, parse_wheel_message("rp01.00,lp01.00,"));
+  EXPECT_FALSE(w.advance(0.4, 0.1));
+  EXPECT_NEAR(w.right_position(), 0.6, 1e-9);
+}

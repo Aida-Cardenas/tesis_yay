@@ -189,6 +189,10 @@ void loop() {
       value[4] = '0';
       value[5] = '\0';
     }
+    // Line endings and spaces (e.g. from the Arduino IDE serial monitor) are ignored
+    else if(chr == '\n' || chr == '\r' || chr == ' ')
+    {
+    }
     // Command Value
     else
     {
