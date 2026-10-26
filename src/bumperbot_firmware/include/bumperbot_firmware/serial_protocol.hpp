@@ -34,6 +34,8 @@ std::string format_wheel_command(double right, double left);
 bool take_last_line(std::string & buffer, std::string & line, size_t max_buffer = 256);
 
 // Velocidad y posición de cada rueda a partir de las lecturas del Arduino.
+// Una lectura solo cuenta si trae las dos ruedas: así una línea a medias no
+// mantiene vivos los datos de la otra rueda.
 // El Arduino informa cada 100 ms y el lazo de control corre más rápido, así que
 // entre lecturas se mantiene la última velocidad. Si pasa más de `timeout_s` sin
 // una lectura válida (Arduino reiniciado, cable suelto, solo basura), las
@@ -48,6 +50,7 @@ public:
   // Avanza dt segundos. Devuelve true si los datos están vencidos.
   bool advance(double now_s, double dt);
   bool stale(double now_s) const;
+  bool has_reading() const { return has_reading_; }
   double seconds_since_reading(double now_s) const;
   double right_velocity() const { return right_velocity_; }
   double left_velocity() const { return left_velocity_; }

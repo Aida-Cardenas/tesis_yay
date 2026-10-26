@@ -36,11 +36,13 @@
             </xacro:unless>
         </xacro:unless>
         
-        <!-- ros2_control Common Interfaces -->
+        <!-- ros2_control Common Interfaces.
+             Wheel limits in rad/s: 0.7 m/s (the controller limit) / 0.033 m = 21 rad/s.
+             The JGA25-370 at 12 V reaches about 17.8 rad/s (170 RPM). -->
         <joint name="wheel_left_joint">
             <command_interface name="velocity">
-              <param name="min">-1</param>
-              <param name="max">1</param>
+              <param name="min">-21</param>
+              <param name="max">21</param>
             </command_interface>
             <state_interface name="position" />
             <state_interface name="velocity" />
@@ -48,8 +50,8 @@
 
         <joint name="wheel_right_joint">
             <command_interface name="velocity">
-              <param name="min">-1</param>
-              <param name="max">1</param>
+              <param name="min">-21</param>
+              <param name="max">21</param>
             </command_interface>
             <state_interface name="position" />
             <state_interface name="velocity" />

@@ -43,6 +43,12 @@ private:
   std::string rx_buffer_;
   WheelIntegrator wheels_;
   bool stale_reported_ = false;
+  bool waiting_reported_ = false;
+  bool stop_sent_reported_ = false;
+  bool port_failed_ = false;
+  double activated_at_ = 0.0;
+  double last_reconnect_try_ = 0.0;
+  bool tryReconnect(double now);
   int right_index_ = 0;
   int left_index_ = 1;
   rclcpp::Clock::SharedPtr clock_ = std::make_shared<rclcpp::Clock>(RCL_STEADY_TIME);

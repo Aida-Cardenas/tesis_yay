@@ -119,6 +119,10 @@ CallbackReturn BumperbotInterface::on_activate(const rclcpp_lifecycle::State &)
   rx_buffer_.clear();
   wheels_.reset();
   stale_reported_ = false;
+  waiting_reported_ = false;
+  stop_sent_reported_ = false;
+  port_failed_ = false;
+  activated_at_ = clock_->now().seconds();
 
   try
   {
@@ -170,27 +174,65 @@ CallbackReturn BumperbotInterface::on_deactivate(const rclcpp_lifecycle::State &
 }
 
 
-hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
-                                                          const rclcpp::Duration & period)
+bool BumperbotInterface::tryReconnect(double now)
 {
-  // Only the bytes already received are read, so a line cut in half never
-  // blocks the control loop: the rest is completed on a later cycle.
+  if (now - last_reconnect_try_ < 2.0)
+  {
+    return false;
+  }
+  last_reconnect_try_ = now;
   try
   {
-    while (arduino_.IsDataAvailable())
+    if (arduino_.IsOpen())
     {
-      char byte = 0;
-      arduino_.ReadByte(byte, 1);
-      rx_buffer_.push_back(byte);
+      arduino_.Close();
     }
+    arduino_.Open(port_);
+    arduino_.SetBaudRate(LibSerial::BaudRate::BAUD_115200);
   }
   catch (...)
   {
-    RCLCPP_WARN_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 2000,
-                         "Could not read from %s", port_.c_str());
+    RCLCPP_WARN_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 5000,
+                         "Could not reopen %s, retrying every 2 s", port_.c_str());
+    return false;
+  }
+  rx_buffer_.clear();
+  port_failed_ = false;
+  RCLCPP_INFO(rclcpp::get_logger("BumperbotInterface"), "Reconnected to %s", port_.c_str());
+  return true;
+}
+
+
+hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
+                                                          const rclcpp::Duration & period)
+{
+  const double now = clock_->now().seconds();
+  if (port_failed_)
+  {
+    tryReconnect(now);
   }
 
-  const double now = clock_->now().seconds();
+  // Only the bytes already received are read, so a line cut in half never
+  // blocks the control loop: the rest is completed on a later cycle.
+  if (!port_failed_)
+  {
+    try
+    {
+      while (arduino_.IsDataAvailable())
+      {
+        char byte = 0;
+        arduino_.ReadByte(byte, 1);
+        rx_buffer_.push_back(byte);
+      }
+    }
+    catch (...)
+    {
+      RCLCPP_WARN_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 2000,
+                           "Could not read from %s, trying to reconnect", port_.c_str());
+      port_failed_ = true;
+    }
+  }
+
   std::string message;
   if (take_last_line(rx_buffer_, message))
   {
@@ -208,7 +250,23 @@ hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
   // wall clock, which can jump). If no valid reading arrives for 0.3 s the
   // speeds drop to zero and the wheels stop moving in the odometry.
   const bool stale = wheels_.advance(now, period.seconds());
-  if (stale)
+  if (!wheels_.has_reading())
+  {
+    // Opening the port resets the Arduino, and its bootloader is silent for up
+    // to 2 s: that is expected and only worth a warning if it lasts longer.
+    if (!waiting_reported_)
+    {
+      RCLCPP_INFO(rclcpp::get_logger("BumperbotInterface"), "Waiting for the first data from the Arduino");
+      waiting_reported_ = true;
+    }
+    if (now - activated_at_ > 3.0)
+    {
+      RCLCPP_WARN_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 5000,
+                           "No data from the Arduino %.0f s after start. Check the cable and the sketch",
+                           now - activated_at_);
+    }
+  }
+  else if (stale)
   {
     RCLCPP_WARN_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 2000,
                          "No data from the Arduino for %.1f s: wheel speeds set to zero",
@@ -231,20 +289,41 @@ hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
 hardware_interface::return_type BumperbotInterface::write(const rclcpp::Time &,
                                                           const rclcpp::Duration &)
 {
-  const std::string message = format_wheel_command(velocity_commands_.at(right_index_),
-                                                   velocity_commands_.at(left_index_));
+  if (port_failed_)
+  {
+    return hardware_interface::return_type::OK;
+  }
+  // Without feedback for more than 1 s (after the first reading) the robot is
+  // told to stop, instead of driving on commands it cannot check.
+  const double now = clock_->now().seconds();
+  const bool no_feedback = wheels_.has_reading() && wheels_.seconds_since_reading(now) > 1.0;
+  double right = velocity_commands_.at(right_index_);
+  double left = velocity_commands_.at(left_index_);
+  if (no_feedback)
+  {
+    right = left = 0.0;
+    if (!stop_sent_reported_)
+    {
+      RCLCPP_WARN(rclcpp::get_logger("BumperbotInterface"),
+                  "No feedback from the Arduino for more than 1 s: sending zero speed");
+      stop_sent_reported_ = true;
+    }
+  }
+  else
+  {
+    stop_sent_reported_ = false;
+  }
+  const std::string message = format_wheel_command(right, left);
   try
   {
     arduino_.Write(message);
   }
   catch (...)
   {
-    RCLCPP_ERROR_STREAM(rclcpp::get_logger("BumperbotInterface"),
-                        "Something went wrong while sending the message "
-                            << message << " to the port " << port_);
-    return hardware_interface::return_type::ERROR;
+    RCLCPP_ERROR_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 2000,
+                          "Could not send %s to %s, trying to reconnect", message.c_str(), port_.c_str());
+    port_failed_ = true;
   }
-
   return hardware_interface::return_type::OK;
 }
 }  // namespace bumperbot_firmware

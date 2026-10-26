@@ -121,18 +121,12 @@ void WheelIntegrator::reset()
 
 void WheelIntegrator::on_reading(double now_s, const WheelReading & reading)
 {
-  if (!reading.has_right && !reading.has_left)
+  if (!reading.has_right || !reading.has_left)
   {
     return;
   }
-  if (reading.has_right)
-  {
-    right_velocity_ = reading.right;
-  }
-  if (reading.has_left)
-  {
-    left_velocity_ = reading.left;
-  }
+  right_velocity_ = reading.right;
+  left_velocity_ = reading.left;
   last_reading_s_ = now_s;
   has_reading_ = true;
 }

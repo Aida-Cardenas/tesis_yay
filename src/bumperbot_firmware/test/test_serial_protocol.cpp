@@ -154,3 +154,16 @@ TEST(WheelIntegrator, NoMotionBeforeTheFirstReading)
   EXPECT_TRUE(w.advance(0.5, 0.01));
   EXPECT_DOUBLE_EQ(w.right_position(), 0.0);
 }
+
+TEST(WheelIntegrator, OneWheelReadingsDoNotKeepTheDataAlive)
+{
+  WheelIntegrator w(0.3);
+  w.on_reading(0.0, parse_wheel_message("rp05.00,lp05.00,"));
+  for (int i = 1; i <= 100; ++i)
+  {
+    w.on_reading(i * 0.01, parse_wheel_message("rp05.00,"));
+  }
+  EXPECT_TRUE(w.advance(1.0, 0.01));
+  EXPECT_DOUBLE_EQ(w.left_velocity(), 0.0);
+  EXPECT_TRUE(w.has_reading());
+}

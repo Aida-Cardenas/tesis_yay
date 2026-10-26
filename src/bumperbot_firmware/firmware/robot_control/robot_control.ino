@@ -14,12 +14,16 @@
 #define left_encoder_phaseA 2   // Interrupt
 #define left_encoder_phaseB 4
 
+// Encoder resolution: pulses of phase A per wheel revolution
+const double encoder_ppr = 385.0;
+
 // Encoders (written inside the interrupts, so volatile and read with interrupts off)
 volatile unsigned int right_encoder_counter = 0;
 volatile unsigned int left_encoder_counter = 0;
 volatile char right_wheel_sign = 'p';  // 'p' = positive, 'n' = negative
 volatile char left_wheel_sign = 'p';  // 'p' = positive, 'n' = negative
 unsigned long last_millis = 0;
+unsigned long last_micros = 0;
 const unsigned long interval = 100;
 
 // Safety: if no complete command arrives for this long (ROS crashed, cable
@@ -36,6 +40,11 @@ char value[] = "00.00";
 uint8_t value_idx = 0;
 bool is_cmd_complete = false;
 
+// After a change of direction the PWM is held at 0 for one control cycle and
+// the PID starts again from zero, so the motor is never reversed at full duty.
+bool right_flip_hold = false;
+bool left_flip_hold = false;
+
 // PID
 // Setpoint - Desired
 double right_wheel_cmd_vel = 0.0;     // rad/s
@@ -46,7 +55,7 @@ double left_wheel_meas_vel = 0.0;     // rad/s
 // Output - Command
 double right_wheel_cmd = 0.0;             // 0-255
 double left_wheel_cmd = 0.0;              // 0-255
-// Tuning
+// Tuning (gains per second; see setup() for the sample time)
 double Kp_r = 11.5;
 double Ki_r = 7.5;
 double Kd_r = 0.1;
@@ -72,8 +81,18 @@ void setup() {
   digitalWrite(L298N_in3, HIGH);
   digitalWrite(L298N_in4, LOW);
 
-  rightMotor.SetMode(AUTOMATIC);
-  leftMotor.SetMode(AUTOMATIC);
+  // The control block below runs every 100 ms by millis(). PID_v1 keeps its own
+  // timer and skips Compute() if it sees less than SampleTime, which happened when
+  // millis() ticked in between. With 90 ms it never skips; Ki and Kd are rescaled
+  // so the controller behaves as with the original 100 ms.
+  const double sample_ratio = 100.0 / 90.0;
+  rightMotor.SetSampleTime(90);
+  leftMotor.SetSampleTime(90);
+  rightMotor.SetTunings(Kp_r, Ki_r * sample_ratio, Kd_r / sample_ratio);
+  leftMotor.SetTunings(Kp_l, Ki_l * sample_ratio, Kd_l / sample_ratio);
+  // MANUAL until a non-zero speed is requested (see updateMode)
+  rightMotor.SetMode(MANUAL);
+  leftMotor.SetMode(MANUAL);
   Serial.begin(115200);
 
   // Init encoders
@@ -109,17 +128,21 @@ void loop() {
     {
       if(is_right_wheel_cmd && !is_right_wheel_forward)
       {
-        // change the direction of the rotation
+        // change the direction of the rotation, with the motor off
+        analogWrite(L298N_enA, 0);
         digitalWrite(L298N_in1, HIGH - digitalRead(L298N_in1));
         digitalWrite(L298N_in2, HIGH - digitalRead(L298N_in2));
         is_right_wheel_forward = true;
+        right_flip_hold = true;
       }
       else if(is_left_wheel_cmd && !is_left_wheel_forward)
       {
-        // change the direction of the rotation
+        // change the direction of the rotation, with the motor off
+        analogWrite(L298N_enB, 0);
         digitalWrite(L298N_in3, HIGH - digitalRead(L298N_in3));
         digitalWrite(L298N_in4, HIGH - digitalRead(L298N_in4));
         is_left_wheel_forward = true;
+        left_flip_hold = true;
       }
     }
     // Negative direction
@@ -127,17 +150,21 @@ void loop() {
     {
       if(is_right_wheel_cmd && is_right_wheel_forward)
       {
-        // change the direction of the rotation
+        // change the direction of the rotation, with the motor off
+        analogWrite(L298N_enA, 0);
         digitalWrite(L298N_in1, HIGH - digitalRead(L298N_in1));
         digitalWrite(L298N_in2, HIGH - digitalRead(L298N_in2));
         is_right_wheel_forward = false;
+        right_flip_hold = true;
       }
       else if(is_left_wheel_cmd && is_left_wheel_forward)
       {
-        // change the direction of the rotation
+        // change the direction of the rotation, with the motor off
+        analogWrite(L298N_enB, 0);
         digitalWrite(L298N_in3, HIGH - digitalRead(L298N_in3));
         digitalWrite(L298N_in4, HIGH - digitalRead(L298N_in4));
         is_left_wheel_forward = false;
+        left_flip_hold = true;
       }
     }
     // Separator
@@ -183,6 +210,7 @@ void loop() {
   if(current_millis - last_millis >= interval)
   {
     noInterrupts();
+    unsigned long current_micros = micros();
     unsigned int right_count = right_encoder_counter;
     unsigned int left_count = left_encoder_counter;
     char right_sign = right_wheel_sign;
@@ -191,21 +219,21 @@ void loop() {
     left_encoder_counter = 0;
     interrupts();
 
-    right_wheel_meas_vel = (10 * right_count * (60.0/385.0)) * 0.10472;
-    left_wheel_meas_vel = (10 * left_count * (60.0/385.0)) * 0.10472;
-    
+    // Speed from the real elapsed time, which is never exactly 100 ms
+    double elapsed_s = (current_micros - last_micros) * 1e-6;
+    if(last_micros == 0 || elapsed_s <= 0.0)
+    {
+      elapsed_s = interval * 1e-3;
+    }
+    last_micros = current_micros;
+    const double rad_per_pulse = 2.0 * PI / encoder_ppr;
+    right_wheel_meas_vel = right_count * rad_per_pulse / elapsed_s;
+    left_wheel_meas_vel = left_count * rad_per_pulse / elapsed_s;
+
+    updateMode(rightMotor, right_wheel_cmd_vel, right_wheel_cmd, right_flip_hold);
+    updateMode(leftMotor, left_wheel_cmd_vel, left_wheel_cmd, left_flip_hold);
     rightMotor.Compute();
     leftMotor.Compute();
-
-    // Ignore commands smaller than inertia
-    if(right_wheel_cmd_vel == 0.0)
-    {
-      right_wheel_cmd = 0.0;
-    }
-    if(left_wheel_cmd_vel == 0.0)
-    {
-      left_wheel_cmd = 0.0;
-    }
 
     Serial.print('r');
     Serial.print(right_sign);
@@ -218,6 +246,26 @@ void loop() {
 
     analogWrite(L298N_enA, right_wheel_cmd);
     analogWrite(L298N_enB, left_wheel_cmd);
+  }
+}
+
+// A zero setpoint (from ROS or from the watchdog) or a change of direction puts
+// the PID in MANUAL with the PWM at 0. With the wheel stopped the error is 0 - 0,
+// so in AUTOMATIC the integral would keep the last speed's value and the next
+// start would begin at the old PWM. Going back to AUTOMATIC re-initialises the
+// PID from the current output, which is 0.
+void updateMode(PID &pid, double setpoint, double &output, bool &flip_hold)
+{
+  if(setpoint == 0.0 || flip_hold)
+  {
+    pid.SetMode(MANUAL);
+    output = 0.0;
+    flip_hold = false;
+  }
+  else if(pid.GetMode() == MANUAL)
+  {
+    output = 0.0;
+    pid.SetMode(AUTOMATIC);
   }
 }
 
