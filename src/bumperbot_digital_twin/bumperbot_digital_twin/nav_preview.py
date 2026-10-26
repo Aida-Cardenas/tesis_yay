@@ -223,6 +223,7 @@ class NavPreview:
             execution = real.navigate(x, y, yaw, self.criteria.max_time * 1.5, log)
             log(f"   Real: {execution.status} en {execution.duration:.1f} s, quedó a "
                 f"{execution.final_error * 100:.1f} cm de la meta")
+            self.configure(close_log=True)
         else:
             self.configure(align=True, resume_sync=True)
             log("   3/3 No se ejecuta en el robot real")
@@ -388,6 +389,7 @@ def main(argv=None):
         req.align = bool(kw.get("align", False))
         req.new_log = bool(kw.get("new_log", False))
         req.log_tag = kw.get("log_tag", "")
+        req.close_log = bool(kw.get("close_log", False))
         req.pause_sync = bool(kw.get("pause_sync", False))
         req.resume_sync = bool(kw.get("resume_sync", False))
         res = dual.call("twin", client, req, timeout=15.0)

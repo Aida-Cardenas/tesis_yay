@@ -88,6 +88,7 @@ CSV_COLUMNS = [
     "ff_v", "ff_w", "cmd_v", "cmd_w",
     "rtt_ms", "one_way_ms", "real_odom_age_ms", "leader_cmd_age_ms",
     "anomalies", "sync", "kx", "ky", "ktheta",
+    "twin_rx", "rtt_ema_ms", "clock_offset_ms", "twin_clock",
 ]
 SCAN_COLUMNS = ["t", "common", "mae", "rmse", "bias", "p95",
                 "coverage_real", "coverage_twin", "visibility_agreement", "pos_error"]
@@ -176,6 +177,7 @@ class RobotState:
         self.v = 0.0
         self.w = 0.0
         self.odom_rx = None
+        self.odom_rx_wall = None
         self.odom_stamp = None
         self.cmd_v = 0.0
         self.cmd_w = 0.0
@@ -223,6 +225,7 @@ class Side:
             s.v = msg.twist.twist.linear.x
             s.w = msg.twist.twist.angular.z
             s.odom_rx = time.monotonic()
+            s.odom_rx_wall = time.time()
             s.odom_stamp = stamp_to_sec(msg.header.stamp)
             if self.name == "real":
                 self.bridge.real_odom_age_ms = (time.time() - s.odom_stamp) * 1000.0
@@ -279,6 +282,10 @@ class TwinBridge:
         self.T_real_to_twin = None
         self.rtt_ms = NAN
         self.rtt_ema_ms = NAN
+        self.clock_samples = deque(maxlen=30)
+        self.clock_offset_ms = NAN
+        self.ping_epoch = 0
+        self.warned_comp_without_rtt = False
         self.real_odom_age_ms = NAN
         self.last_active = -1e9
         self.tick_count = 0
@@ -444,6 +451,9 @@ class TwinBridge:
         self.event_writer.writerow(EVENT_COLUMNS)
         with open(base + ".json", "w") as f:
             meta = {"started": datetime.now().isoformat(), "parameters": self.p,
+                    "live": {"leader": self.leader, "kx": self.p["kx"], "ky": self.p["ky"],
+                             "ktheta": self.p["ktheta"], "rtt_ema_ms": self.rtt_ema_ms,
+                             "clock_offset_ms": self.clock_offset_ms},
                     "twin_model": self.twin_model.to_dict() if self.twin_model else None}
             json.dump(meta, f, indent=2, ensure_ascii=False)
         self.main.get_logger().info(f"Registrando en {self.csv_path}")
@@ -472,22 +482,38 @@ class TwinBridge:
         msg.frame_id = str(self.ping_seq)
         msg.stamp = wall_time_msg()
         with self.lock:
-            self.ping_sent[self.ping_seq] = time.monotonic()
+            self.ping_sent[self.ping_seq] = (time.monotonic(), time.time())
             for old in [s for s in self.ping_sent if s < self.ping_seq - 100]:
                 del self.ping_sent[old]
             self.send_to("real", self.ping_pub, msg)
 
     def _pong_cb(self, msg):
+        parts = msg.frame_id.split(";")
         try:
-            seq = int(msg.frame_id)
+            seq = int(parts[0])
         except ValueError:
             return
         with self.lock:
             sent = self.ping_sent.pop(seq, None)
-            if sent is not None:
-                self.rtt_ms = (time.monotonic() - sent) * 1000.0
-                self.rtt_ema_ms = (self.rtt_ms if not math.isfinite(self.rtt_ema_ms)
-                                   else 0.8 * self.rtt_ema_ms + 0.2 * self.rtt_ms)
+            if sent is None or seq <= self.ping_epoch:
+                return
+            sent_mono, sent_wall = sent
+            self.rtt_ms = (time.monotonic() - sent_mono) * 1000.0
+            self.rtt_ema_ms = (self.rtt_ms if not math.isfinite(self.rtt_ema_ms)
+                               else 0.8 * self.rtt_ema_ms + 0.2 * self.rtt_ms)
+            if len(parts) > 1 and parts[1] == "t":
+                # The echo writes its own clock into the stamp. Halfway through the
+                # round trip, the two clocks should read the same.
+                offset = (stamp_to_sec(msg.stamp) - (sent_wall + self.rtt_ms / 2000.0)) * 1000.0
+                self.clock_samples.append((self.rtt_ms, offset))
+                self.clock_offset_ms = min(self.clock_samples)[1]
+
+    def _reset_rtt(self):
+        """Tras cambiar la red, los pongs en vuelo traen el retardo viejo: se descartan."""
+        self.rtt_ema_ms = NAN
+        self.ping_epoch = self.ping_seq
+        self.clock_samples.clear()
+        self.clock_offset_ms = NAN
 
     # ------------------------------------------------------------------ events
     def emit_event(self, source, kind, phase, severity, value, description):
@@ -653,7 +679,7 @@ class TwinBridge:
                 self._configure_network(*[n if n >= 0 else c for n, c in zip(net, current)])
                 notes.append(f"red={self.p['net_delay_ms']:.0f}ms±{self.p['net_jitter_ms']:.0f} "
                              f"pérdida={self.p['net_loss']:.2f}")
-                self.rtt_ema_ms = NAN
+                self._reset_rtt()
             if request.align:
                 ok = self.align()
                 notes.append("alineado" if ok else "sin alinear (falta odometría)")
@@ -665,6 +691,8 @@ class TwinBridge:
                 self._new_log(request.log_tag or self.p["log_tag"])
                 notes.append(f"registro={os.path.basename(self.csv_path)}")
             response.log_path = self.csv_path or ""
+            response.clock_offset_ms = self.clock_offset_ms
+            response.rtt_ms = self.rtt_ema_ms
         response.success = True
         response.message = ", ".join(notes) or "sin cambios"
         self.main.get_logger().info(f"Configuración: {response.message}")
@@ -684,6 +712,7 @@ class TwinBridge:
                     values = {k: self.p[k] for k in ("net_delay_ms", "net_jitter_ms", "net_loss")}
                     values[prm.name] = float(prm.value)
                     self._configure_network(values["net_delay_ms"], values["net_jitter_ms"], values["net_loss"])
+                    self._reset_rtt()
             elif prm.name in RUNTIME_FLOATS:
                 with self.lock:
                     self.p[prm.name] = float(prm.value)
@@ -746,7 +775,15 @@ class TwinBridge:
                 cmd_delay = tau if follower == "real" else 0.0
                 ref = integrate_unicycle(ref_raw, L.v, L.w, cmd_delay + (tau if leader == "real" else 0.0))
                 if follower == "real":
-                    F_pose = smith_predict(F_raw, self.sent_to_real, now, tau, tau)
+                    F_pose = smith_predict(F_raw, self.sent_to_real, now, tau, tau,
+                                           model=self.twin_model, v0=F.v, w0=F.w)
+                if not math.isfinite(self.rtt_ema_ms) and not self.warned_comp_without_rtt:
+                    self.main.get_logger().warn(
+                        "Compensación activa sin latencia medida (¿corre latency_echo en el robot?): "
+                        "mientras no haya RTT, la compensación no adelanta nada")
+                    self.warned_comp_without_rtt = True
+            elif math.isfinite(self.rtt_ema_ms):
+                self.warned_comp_without_rtt = False
             err = tracking_error(ref, F_pose)
             pos_err = math.hypot(err[0], err[1])
             if self.p["feedforward_source"] == "odom":
@@ -847,6 +884,8 @@ class TwinBridge:
             ff[0], ff[1], cmd[0], cmd[1],
             self.rtt_ms, tau * 1000.0, self.real_odom_age_ms, cmd_age,
             status.anomalies, int(self.p["sync"]), self.p["kx"], self.p["ky"], self.p["ktheta"],
+            twin.odom_rx_wall if twin.odom_rx_wall is not None else NAN, self.rtt_ema_ms,
+            self.clock_offset_ms, self.sides["twin"].node.get_clock().now().nanoseconds * 1e-9,
         ]
         self.csv_writer.writerow([f"{x:.5f}" if isinstance(x, float) else x for x in row])
         if self.tick_count % 20 == 0:

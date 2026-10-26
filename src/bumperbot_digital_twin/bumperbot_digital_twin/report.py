@@ -119,15 +119,33 @@ def welch_t(a, b):
     if a.size < 2 or b.size < 2:
         return math.nan, math.nan, math.nan
     va, vb = a.var(ddof=1) / a.size, b.var(ddof=1) / b.size
-    if va + vb == 0:
-        return math.inf if a.mean() != b.mean() else 0.0, math.nan, 0.0 if a.mean() != b.mean() else 1.0
-    t = (a.mean() - b.mean()) / math.sqrt(va + vb)
-    df = (va + vb) ** 2 / (va ** 2 / (a.size - 1) + vb ** 2 / (b.size - 1))
     try:
         from scipy import stats as st
     except ImportError:
+        st = None
+    if va + vb == 0:
+        diff = a.mean() - b.mean()
+        t = math.copysign(math.inf, diff) if diff != 0 else 0.0
+        p = math.nan if st is None else (0.0 if diff != 0 else 1.0)
+        return t, math.nan, p
+    t = (a.mean() - b.mean()) / math.sqrt(va + vb)
+    df = (va + vb) ** 2 / (va ** 2 / (a.size - 1) + vb ** 2 / (b.size - 1))
+    if st is None:
         return float(t), float(df), math.nan
     return float(t), float(df), float(2 * st.t.sf(abs(t), df))
+
+
+def holm(pvalues):
+    """p ajustados por Holm-Bonferroni (los NaN quedan NaN y no cuentan)."""
+    idx = [i for i, p in enumerate(pvalues) if math.isfinite(p)]
+    ordered = sorted(idx, key=lambda i: pvalues[i])
+    m = len(ordered)
+    adjusted = [math.nan] * len(pvalues)
+    running = 0.0
+    for rank, i in enumerate(ordered):
+        running = max(running, min(1.0, (m - rank) * pvalues[i]))
+        adjusted[i] = running
+    return adjusted
 
 
 def welch_ci(a, b, level=0.95):
@@ -259,33 +277,77 @@ def build_report(csv_paths, out_dir, protocol=None, plots=True):
 
     results_cmp = []
     if comparisons:
-        lines += ["", "## Comparaciones (prueba t de Welch)", "",
-                  "| A | B | Métrica | A | B | Diferencia A − B | IC 95 % | n A/B | t | gl | p | ¿Significativa (α=0,05)? |",
-                  "|---|---|---|---|---|---|---|---|---|---|---|---|"]
-        few = False
         for pair in comparisons:
             a_name, b_name = pair[0], pair[1]
             key = pair[2] if len(pair) > 2 else "rmse"
-            if a_name not in groups or b_name not in groups:
+            missing = [n for n in (a_name, b_name) if n not in groups]
+            if missing:
+                results_cmp.append({"a": a_name, "b": b_name, "metrica": key, "media_a": math.nan,
+                                    "media_b": math.nan, "n_a": len(groups.get(a_name, [])),
+                                    "n_b": len(groups.get(b_name, [])), "t": math.nan, "gl": math.nan,
+                                    "p": math.nan, "diferencia": math.nan, "ic95": [math.nan, math.nan],
+                                    "concluyente": False, "significativa": False,
+                                    "veredicto": "sin datos (no hay corridas de " + ", ".join(missing) + ")"})
                 continue
             a = [metric(r, key) for r in groups[a_name]]
             b = [metric(r, key) for r in groups[b_name]]
             c = compare(a, b)
-            ma, mb = np.nanmean(a), np.nanmean(b)
-            few = few or c["veredicto"].startswith("no concluyente")
-            results_cmp.append({"a": a_name, "b": b_name, "metrica": key, "media_a": ma, "media_b": mb, **c})
-            name, scale, unit = METRICS[key]
+            if key == "rmse_real" and (c["n_a"] == 0 or c["n_b"] == 0):
+                reasons = {r.get("error_real_sin_datos") for n in (a_name, b_name) for r in groups[n]}
+                if "relojes" in reasons:
+                    c["veredicto"] = "sin datos (relojes desincronizados)"
+                elif "sin sellos" in reasons:
+                    c["veredicto"] = "sin datos (sin sellos de tiempo)"
+            results_cmp.append({"a": a_name, "b": b_name, "metrica": key,
+                                "media_a": np.nanmean(a) if np.isfinite(a).any() else math.nan,
+                                "media_b": np.nanmean(b) if np.isfinite(b).any() else math.nan, **c})
+        # Holm-Bonferroni sobre las comparaciones concluyentes del protocolo
+        adjusted = holm([c["p"] if c["concluyente"] else math.nan for c in results_cmp])
+        for c, p_holm in zip(results_cmp, adjusted):
+            c["p_holm"] = p_holm
+            if c["concluyente"]:
+                c["significativa"] = p_holm < 0.05
+                c["veredicto"] = "sí" if c["significativa"] else "no"
+        lines += ["", "## Comparaciones (prueba t de Welch, corrección de Holm)", "",
+                  "| A | B | Métrica | A | B | Diferencia A − B | IC 95 % | n A/B | t | gl | p | p (Holm) "
+                  "| ¿Diferencia significativa (α=0,05, Holm)? |",
+                  "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+        for c in results_cmp:
+            name, scale, unit = METRICS[c["metrica"]]
             lo, hi = c["ic95"]
             ci = f"[{lo * scale:+.2f}; {hi * scale:+.2f}] {unit}" if math.isfinite(lo) else "—"
-            lines.append(f"| {a_name} | {b_name} | {name} | {ma * scale:.2f} {unit} | {mb * scale:.2f} {unit} "
-                         f"| {c['diferencia'] * scale:+.2f} {unit} | {ci} | {c['n_a']}/{c['n_b']} | {c['t']:.2f} "
-                         f"| {c['gl']:.1f} | {c['p']:.4f} | {c['veredicto']} |")
+            num = (lambda v, f: format(v, f) if math.isfinite(v) else "—")
+            lines.append(f"| {c['a']} | {c['b']} | {name} | {num(c['media_a'] * scale, '.2f')} {unit} "
+                         f"| {num(c['media_b'] * scale, '.2f')} {unit} | {num(c['diferencia'] * scale, '+.2f')} {unit} "
+                         f"| {ci} | {c['n_a']}/{c['n_b']} | {num(c['t'], '.2f')} | {num(c['gl'], '.1f')} "
+                         f"| {num(c['p'], '.4f')} | {num(c['p_holm'], '.4f')} | {c['veredicto']} |")
+        m = sum(1 for c in results_cmp if c["concluyente"])
         lines += ["", "Si el intervalo de confianza de la diferencia contiene el cero, los datos no muestran "
-                  "una diferencia clara entre A y B."]
-        if few:
+                  "una diferencia clara entre A y B. El p de Holm corrige por hacer varias comparaciones a la "
+                  f"vez: sin corregir, con {m} comparaciones a α = 0,05 la probabilidad de al menos un falso "
+                  f"positivo sería de hasta un {100 * (1 - 0.95 ** m):.0f} %."]
+        if any(c["veredicto"].startswith("no concluyente") for c in results_cmp):
             lines += [f"Las comparaciones con menos de {MIN_RUNS_FOR_TEST} corridas por grupo se marcan como no "
                       "concluyentes: con tan pocas corridas, el valor de p depende más de cuánto se parecieron "
                       "esas corridas que del efecto."]
+
+    warnings = []
+    for exp, runs in groups.items():
+        for r in runs:
+            tag = f"{exp} r{r.get('repeticion', '?')}"
+            comp = r.get("compensacion_sin_rtt", math.nan)
+            if math.isfinite(comp) and comp > 0.1:
+                warnings.append(f"{tag}: la compensación estuvo activa sin latencia medida en el {comp:.0%} de "
+                                "la corrida (en ese tramo no compensó nada)")
+            rtf = r.get("factor_tiempo_real", math.nan)
+            if math.isfinite(rtf) and rtf < 0.95:
+                warnings.append(f"{tag}: el gemelo corrió a {rtf:.2f} veces el tiempo real")
+            off = r.get("desfase_relojes_ms", math.nan)
+            if math.isfinite(off) and abs(off) > 10:
+                warnings.append(f"{tag}: los relojes del robot y del PC difieren en {off:.0f} ms; el error real "
+                                f"se desplaza unos {abs(off) * 0.15 / 10:.1f} cm a 0,15 m/s")
+    if warnings:
+        lines += ["", "## Avisos de calidad de los datos", ""] + [f"- {w}" for w in warnings]
 
     sweep = latency_series(table, protocol)
     if plots and sweep["series"]:
@@ -345,14 +407,22 @@ def resolve_protocol_path(name):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("inputs", nargs="+", help="Carpetas o archivos twin_*.csv")
+    parser.add_argument("inputs", nargs="+",
+                        help="Carpeta de una sesión de twin_experiment (usa solo sus corridas válidas), "
+                             "carpetas de registros o archivos twin_*.csv")
     parser.add_argument("-p", "--protocol", help="YAML del protocolo (descripciones y comparaciones)")
     parser.add_argument("-o", "--out", default="informe_gemelo")
     parser.add_argument("--no-plots", action="store_true")
     args = parser.parse_args(argv)
     paths = []
     for item in args.inputs:
-        if os.path.isdir(item):
+        if os.path.isdir(item) and os.path.exists(os.path.join(item, "sesion.json")):
+            from bumperbot_digital_twin.session import Session
+            session = Session.load(item)
+            paths += [r["registro"] for r in session.good_runs() if os.path.exists(r["registro"])]
+            print(f"Sesión {item}: {len(session.good_runs())} corridas completas y válidas, "
+                  f"{len(session.discarded())} descartadas")
+        elif os.path.isdir(item):
             paths += glob.glob(os.path.join(item, "twin_*.csv"))
         else:
             paths.append(item)

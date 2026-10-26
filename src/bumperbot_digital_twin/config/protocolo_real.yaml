@@ -1,8 +1,19 @@
 # Protocolo de la Prueba 5 con el robot físico.
 #   ros2 run bumperbot_digital_twin twin_experiment protocolo_real
-# Entre corridas el programa pide colocar el robot en la marca de salida.
-# Los experimentos que entran en una prueba t de Welch llevan 5 repeticiones:
-# con 2 por grupo, el valor de p depende más del azar que del efecto.
+#   ros2 run bumperbot_digital_twin twin_experiment protocolo_real --resume ~/twin_resultados/<sesión>
+# Antes de cada corrida el programa pide colocar el robot en la marca de salida;
+# ahí se puede escribir el voltaje de la batería.
+#
+# Diseño:
+# - Los experimentos que entran en una prueba t de Welch llevan 5 repeticiones:
+#   con 2 por grupo, el valor de p depende más del azar que del efecto.
+# - Las condiciones que se comparan se intercalan (interleave): una corrida de
+#   cada una por ronda, en orden aleatorio. Así la descarga de la batería, la
+#   temperatura de los motores o la red no se confunden con la condición.
+# - El gemelo se calibra con rectas y círculos (E1, E2, E5) y se evalúa en
+#   cuadrados (E4 frente a E7), un recorrido que no vio al calibrarse.
+# - TUNE es pura simulación (unos 2 minutos): va justo después de CAL para que
+#   G0T y L250RT puedan intercalarse con sus controles.
 name: protocolo_real
 defaults:
   repetitions: 3
@@ -23,6 +34,25 @@ experiments:
     repetitions: 5
     pattern: line
     feedback: false
+  - name: E5
+    description: Círculo de 0,5 m de radio con corrección
+    repetitions: 5
+    pattern: circle
+  - name: E6
+    description: Cuadrado de 1 m, el robot real sigue al gemelo
+    pattern: square
+    leader: twin
+
+  - name: CAL
+    calibrate_from: [E1, E2, E5]
+    output: modelo_gemelo.yaml
+  - name: TUNE
+    tune:
+      follower: [twin, real]
+      delay_ms: [0, 250]
+      patterns: [square, circle]
+    output: ganancias.yaml
+
   - name: E3
     description: Cuadrado de 1 m con corrección
     repetitions: 5
@@ -32,24 +62,17 @@ experiments:
     repetitions: 5
     pattern: square
     feedback: false
-  - name: E5
-    description: Círculo de 0,5 m de radio con corrección
-    pattern: circle
-  - name: E6
-    description: Cuadrado de 1 m, el robot real sigue al gemelo
-    pattern: square
-    leader: twin
-
-  - name: CAL
-    calibrate_from: [E1, E2, E3, E4, E5]
-    output: modelo_gemelo.yaml
-
   - name: E7
     description: Cuadrado de 1 m, solo copia comandos, gemelo calibrado
     repetitions: 5
     pattern: square
     feedback: false
     twin_model: true
+  - name: G0T
+    description: Cuadrado de 1 m con corrección y ganancias sintonizadas
+    repetitions: 5
+    pattern: square
+    gains: tuned
 
   - name: L100
     description: Red con 100 ms de retardo, sin compensación
@@ -92,18 +115,6 @@ experiments:
     net_delay_ms: 250
     net_jitter_ms: 20
     compensation: true
-
-  - name: TUNE
-    tune:
-      follower: [twin, real]
-      delay_ms: [0, 250]
-      patterns: [square, circle]
-    output: ganancias.yaml
-  - name: G0T
-    description: Cuadrado de 1 m con corrección y ganancias sintonizadas
-    repetitions: 5
-    pattern: square
-    gains: tuned
   - name: L250RT
     description: Red con 250 ms, el robot real sigue al gemelo, ganancias sintonizadas
     pattern: square
@@ -126,12 +137,18 @@ experiments:
     repetitions: 2
     instructions: Sin tocar el joystick, empuja el robot unos 30 cm con la mano.
 
+interleave:
+  - [E1, E2]
+  - [E3, E4, E7, G0T]
+  - [L100, L100C, L250, L250C]
+  - [L250R, L250RC, L250RT]
+
 comparisons:
   - [E1, E2]
   - [E3, E4]
   - [E4, E7]
+  - [E3, G0T]
   - [L100, L100C, rmse_real]
   - [L250, L250C, rmse_real]
   - [L250R, L250RC, rmse_real]
-  - [E3, G0T]
   - [L250R, L250RT, rmse_real]

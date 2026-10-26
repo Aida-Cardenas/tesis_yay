@@ -123,6 +123,6 @@ Algunos de estos archivos se quitaron en la limpieza (ver arriba); la tabla se d
 | Faltaban dependencias en `package.xml` (solo se notaba al compilar paquetes sueltos) | `bumperbot_description`, `bumperbot_firmware` | Agregadas |
 | El bloqueo por atasco del gemelo usaba el mismo lock de `twist_mux` que `safety_stop`, así que uno podía liberar al otro | `anomaly_detector.py`, `twist_mux_locks.yaml` | Lock propio, `anomaly_stop` |
 
-`robot_control_inverted.ino` se eliminó: además de cambiar los lados invertía el sentido de motores y encoders, y con la interfaz corregida ya no hace falta. El único firmware es `robot_control.ino`. Si el robot estaba cableado para el sketch invertido, con el actual puede andar hacia atrás aunque la odometría parezca correcta; el README explica cómo comprobarlo (paso 4 de "Uso con el robot real").
+`robot_control_inverted.ino` se eliminó: además de cambiar los lados invertía el sentido de motores y encoders, y con la interfaz corregida ya no hace falta. El único firmware es `robot_control.ino`. Si el robot estaba cableado para el sketch invertido, con el actual puede andar hacia atrás aunque la odometría parezca correcta; el README explica cómo comprobarlo (paso 5 de "Uso con el robot real").
 
 Los planificadores y controladores del curso (`DijkstraPlanner`, `AStarPlanner`, `PDMotionPlanner`, `PurePursuit`) tenían errores conocidos, pero no se corrigieron porque Nav2 nunca los usaba: se eliminaron del repositorio junto con el resto del código que el sistema no ejecuta (sección 1).

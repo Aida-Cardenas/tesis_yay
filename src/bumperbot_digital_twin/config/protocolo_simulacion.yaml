@@ -2,6 +2,8 @@
 # (real_mode:=fake). Corre sin intervención:
 #   ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake fake_real_tau:=0.3 fake_real_gain:=0.85
 #   ros2 run bumperbot_digital_twin twin_experiment protocolo_simulacion --auto
+# Mismo diseño que protocolo_real: 5 repeticiones en lo que se compara, condiciones
+# intercaladas y calibración con recorridos distintos de los de la evaluación.
 name: protocolo_simulacion
 defaults:
   repetitions: 5
@@ -13,19 +15,26 @@ defaults:
   gains: default
 
 experiments:
+  - {name: S5, description: Línea solo copiando comandos, pattern: line, feedback: false, repetitions: 3}
+  - {name: S6, description: Círculo solo copiando comandos, pattern: circle, feedback: false, repetitions: 3}
+  - {name: S3, description: El robot real sigue al gemelo, pattern: square, leader: twin, repetitions: 3}
+  - {name: CAL, calibrate_from: [S5, S6]}
+  - {name: TUNE, tune: {follower: [real], delay_ms: [300], patterns: [square]}}
   - {name: S1, description: Cuadrado con corrección, pattern: square}
   - {name: S2, description: Cuadrado solo copiando comandos, pattern: square, feedback: false}
-  - {name: S3, description: El robot real sigue al gemelo, pattern: square, leader: twin}
-  - {name: CAL, calibrate_from: [S1, S2]}
   - {name: S4, description: Solo copia comandos con gemelo calibrado, pattern: square, feedback: false, twin_model: true}
-  - {name: L0, description: Sin retardo emulado, pattern: square, net_delay_ms: 0}
+  - {name: L0, description: Sin retardo emulado, pattern: square, net_delay_ms: 0, repetitions: 3}
   - {name: L150, description: 150 ms sin compensación, pattern: square, net_delay_ms: 150}
   - {name: L150C, description: 150 ms con compensación, pattern: square, net_delay_ms: 150, compensation: true}
   - {name: L300, description: 300 ms sin compensación, pattern: square, net_delay_ms: 300}
   - {name: L300C, description: 300 ms con compensación, pattern: square, net_delay_ms: 300, compensation: true}
   - {name: R300, description: El real sigue al gemelo con 300 ms, pattern: square, leader: twin, net_delay_ms: 300}
-  - {name: TUNE, tune: {follower: [real], delay_ms: [300], patterns: [square]}}
   - {name: R300T, description: El real sigue al gemelo con 300 ms y ganancias sintonizadas, pattern: square, leader: twin, net_delay_ms: 300, gains: tuned}
+
+interleave:
+  - [S1, S2, S4]
+  - [L150, L150C, L300, L300C]
+  - [R300, R300T]
 
 comparisons:
   - [S1, S2]

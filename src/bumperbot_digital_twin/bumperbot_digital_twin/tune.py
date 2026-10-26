@@ -38,7 +38,11 @@ def report_markdown(result, scenarios, real_model, twin_model):
         "| | kx | ky | kθ | Costo |", "|---|---|---|---|---|",
         f"| Antes | {d['kx']:.2f} | {d['ky']:.2f} | {d['ktheta']:.2f} | {result.default_cost:.4f} |",
         f"| Después | {g['kx']:.2f} | {g['ky']:.2f} | {g['ktheta']:.2f} | {result.cost:.4f} |", "",
-        f"{result.evaluations} combinaciones simuladas en {len(scenarios)} escenarios.", "",
+        f"{result.evaluations} combinaciones simuladas en {len(scenarios)} escenarios.",
+        "Costo de cada escenario: RMSE de la posición real entre los robots en simulación + 0,05 × RMSE "
+        "de orientación + 0,01 × esfuerzo de control; se promedia entre escenarios.",
+        (f"Atención: {', '.join(result.at_bounds)} quedó en el límite de la búsqueda." if result.at_bounds
+         else "Ninguna ganancia quedó en el límite de la búsqueda."), "",
         "| Escenario | RMSE antes [cm] | RMSE después [cm] | Máx. antes [cm] | Máx. después [cm] |",
         "|---|---|---|---|---|",
     ]

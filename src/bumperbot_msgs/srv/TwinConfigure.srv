@@ -31,3 +31,7 @@ float64 ktheta
 bool success
 string message
 string log_path
+# Diferencia estimada entre el reloj del robot y el del PC [ms] (NaN sin datos)
+float64 clock_offset_ms
+# Latencia de ida y vuelta promedio [ms] (NaN sin datos)
+float64 rtt_ms

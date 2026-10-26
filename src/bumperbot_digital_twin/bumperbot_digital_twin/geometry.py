@@ -107,14 +107,24 @@ def integrate_unicycle(pose, v, w, dt):
     )
 
 
-def smith_predict(pose, sent_commands, now, observation_delay, command_delay, step=0.05):
+def smith_predict(pose, sent_commands, now, observation_delay, command_delay, step=0.05,
+                  model=None, v0=0.0, w0=0.0):
     """Predictor de Smith: dónde estará el seguidor cuando le llegue el próximo comando.
 
     `pose` es la última pose observada, que salió del robot hace `observation_delay`
     segundos. Los comandos enviados (lista de (instante_envío, v, ω)) tardan
     `command_delay` en llegar, así que se reproducen los que ya están "en vuelo" para
     llevar la pose desde now - observation_delay hasta now + command_delay.
+
+    Sin `model`, el robot sigue cada comando al instante (reproducción cinemática).
+    Con `model` (un TwinModel identificado del robot: .linear y .angular con gain,
+    tau y delay), cada velocidad parte de la medida (v0, w0) y responde a los
+    comandos con su ganancia, su constante de tiempo y su retardo, que es lo que
+    define a un predictor de Smith.
     """
+    if model is not None:
+        return _smith_predict_model(pose, list(sent_commands), now, observation_delay, command_delay,
+                                    model, v0, w0, min(step, 0.01))
     t = now - observation_delay
     end = now + command_delay
     idx = -1
@@ -132,4 +142,29 @@ def smith_predict(pose, sent_commands, now, observation_delay, command_delay, st
         while idx + 1 < len(commands) and commands[idx + 1][0] <= t - command_delay + 1e-9:
             idx += 1
             v, w = commands[idx][1], commands[idx][2]
+    return pose
+
+
+def _command_at(commands, when, column):
+    value = 0.0
+    for sent, v, w in commands:
+        if sent > when + 1e-9:
+            break
+        value = v if column == 0 else w
+    return value
+
+
+def _smith_predict_model(pose, commands, now, observation_delay, command_delay, model, v0, w0, step):
+    t = now - observation_delay
+    end = now + command_delay
+    speeds = [v0, w0]
+    channels = (model.linear, model.angular)
+    while t < end - 1e-9:
+        h = min(step, end - t)
+        for i, ch in enumerate(channels):
+            u = _command_at(commands, t - command_delay - ch.delay, i)
+            alpha = 1.0 if ch.tau <= 1e-9 else 1.0 - math.exp(-h / ch.tau)
+            speeds[i] += alpha * (ch.gain * u - speeds[i])
+        pose = integrate_unicycle(pose, speeds[0], speeds[1], h)
+        t += h
     return pose

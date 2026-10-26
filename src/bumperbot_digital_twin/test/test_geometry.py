@@ -92,3 +92,43 @@ def test_smith_predictor_replays_commands_in_flight():
     sent = [(k * 0.05, 0.2 if k * 0.05 < 0.9 else 0.0, 0.0) for k in range(21)]
     assert smith_predict(Pose2D(), sent, 1.0, 0.2, 0.2).x == pytest.approx(0.06, abs=1e-6)
     assert smith_predict(Pose2D(1, 2, 0.5), [], 1.0, 0.0, 0.0) == Pose2D(1, 2, 0.5)
+
+
+def test_model_based_smith_predictor_tracks_a_lagged_robot():
+    from types import SimpleNamespace
+    from bumperbot_digital_twin.dynamics import FirstOrderModel, FirstOrderFilter
+    from bumperbot_digital_twin.geometry import smith_predict
+    model = SimpleNamespace(linear=FirstOrderModel(0.85, 0.3, 0.1), angular=FirstOrderModel(0.85, 0.3, 0.1))
+    delay = 0.15
+    dt = 0.01
+    sent = [(k * dt, 0.15 if 1.0 <= k * dt < 3.0 else 0.0, 0.0) for k in range(600)]
+    filt = FirstOrderFilter(model.linear)
+    truth = []
+    x = 0.0
+    for k in range(600):
+        t = k * dt
+        v = filt.update(t, _command(sent, t - delay))
+        x += v * dt
+        truth.append((t, x, v))
+    errors = {"kinematic": [], "model": []}
+    for now in [1.2 + 0.1 * i for i in range(30)]:
+        k_obs = int(round((now - delay) / dt))
+        t_obs, x_obs, v_obs = truth[k_obs]
+        k_end = int(round((now + delay) / dt))
+        past = [c for c in sent if c[0] <= now + 1e-9]
+        kin = smith_predict(Pose2D(x_obs, 0, 0), past, now, delay, delay)
+        mod = smith_predict(Pose2D(x_obs, 0, 0), past, now, delay, delay, model=model, v0=v_obs)
+        errors["kinematic"].append(kin.x - truth[k_end][1])
+        errors["model"].append(mod.x - truth[k_end][1])
+    rms = {k: math.sqrt(sum(e * e for e in v) / len(v)) for k, v in errors.items()}
+    assert rms["model"] < 0.002
+    assert rms["kinematic"] > 5 * rms["model"]
+
+
+def _command(sent, when):
+    value = 0.0
+    for t, v, _ in sent:
+        if t > when + 1e-9:
+            break
+        value = v
+    return value

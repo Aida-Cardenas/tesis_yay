@@ -56,6 +56,11 @@ class AnomalyDetectorNode(Node):
                 self.get_logger().info(f"Modelo cargado de {model_file}")
             except Exception as exc:
                 self.get_logger().error(f"No se pudo leer {model_file}: {exc}. Uso el modelo nominal.")
+        if model is NOMINAL_MODEL:
+            self.get_logger().warn(
+                "Sin modelo identificado: el detector usa el modelo nominal (K = 1, τ = 0,1 s). Con un robot "
+                "más lento puede reportar desviaciones del modelo falsas, sobre todo a las velocidades de Nav2. "
+                "Para A1/A2 y para navegar, lanza con model_file:=<modelo_gemelo.yaml de la calibración>.")
         self.detector = AnomalyDetector(model, cfg)
 
         self.cmd = (0.0, 0.0)

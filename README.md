@@ -46,7 +46,7 @@ tesis-gemelo-digital-wmr/          <- esta carpeta ES el workspace (colcon build
 ```bash
 git clone <URL-de-tu-repo> ~/tesis_ws
 cd ~/tesis_ws
-./install_dependencies.sh           # en la Raspberry Pi: ./install_dependencies.sh robot
+./install_dependencies.sh           # en la Raspberry Pi: ./install_dependencies.sh robot <IP del PC>
 colcon build
 source install/setup.bash
 ```
@@ -115,12 +115,18 @@ Luego se usa con `map_name:=mi_mapa`.
    sudo udevadm control --reload-rules && sudo service udev restart && sudo udevadm trigger
    ls -l /dev/arduino /dev/rplidar
    ```
-3. **Lanzar** en la Raspberry Pi:
+3. **Relojes.** `install_dependencies.sh` deja al PC como servidor de hora (chrony) y a la Raspberry Pi tomando la hora de él, si se le pasó la IP del PC. Hay que comprobarlo antes de cualquier toma de datos, porque el error "real" entre los robots compara instantes de los dos relojes: 50 ms de diferencia ya son 0,75 cm a 0,15 m/s.
+   ```bash
+   chronyc sources      # en la Raspberry Pi: la IP del PC debe aparecer con ^*
+   chronyc tracking     # "System time" debe ser de pocos milisegundos
+   ```
+   Al empezar, `twin_experiment` mide la diferencia de relojes con el robot: avisa si supera 10 ms y no arranca si supera 50 ms.
+4. **Lanzar** en la Raspberry Pi:
    ```bash
    ros2 launch bumperbot_bringup real_robot.launch.py use_slam:=true
    ```
    Sin udev, se puede indicar el puerto a mano: `arduino_port:=/dev/ttyUSB0`.
-4. **Comprobar el sentido de giro, antes de cualquier otra prueba.** Si el robot estaba cableado para el sketch "invertido" del curso, con el sketch actual puede andar hacia atrás mientras la odometría de las ruedas parece correcta (los encoders se invierten junto con los motores). Solo la IMU y el LiDAR lo delatan.
+5. **Comprobar el sentido de giro, antes de cualquier otra prueba.** Si el robot estaba cableado para el sketch "invertido" del curso, con el sketch actual puede andar hacia atrás mientras la odometría de las ruedas parece correcta (los encoders se invierten junto con los motores). Solo la IMU y el LiDAR lo delatan.
    1. *Hacia adelante, sin ROS.* Con `real_robot.launch.py` cerrado, abrir el monitor serie del Arduino IDE a 115200 baudios y enviar `rp03.00,lp03.00,` varias veces seguidas (el Arduino frena las ruedas si pasa medio segundo sin comandos). El robot debe avanzar hacia su frente y las respuestas deben empezar con `rp` y traer `lp` (signo positivo en ambas ruedas). Si una rueda gira hacia atrás, se invierten los dos cables de ese motor en el L298N; si gira hacia adelante pero responde con `n`, se intercambian las fases A y B de su encoder.
    2. *Giro, con ROS.* Lanzar `real_robot.launch.py` y en otra terminal:
       ```bash
@@ -132,7 +138,7 @@ Luego se usa con `map_name:=mi_mapa`.
       ros2 topic echo /imu/out --field angular_velocity.z
       ```
       Los dos deben ser **positivos** y parecidos (unos 0,5 rad/s), y el rumbo de la odometría debe ir aumentando. Si el robot gira en sentido horario, o la IMU da negativo mientras la odometría da positivo, hay que corregir el cableado (paso anterior) antes de seguir.
-5. **Visualizar** desde la laptop (misma red y mismo `ROS_DOMAIN_ID` en ambas máquinas):
+6. **Visualizar** desde la laptop (misma red y mismo `ROS_DOMAIN_ID` en ambas máquinas):
    ```bash
    ros2 run rviz2 rviz2 -d /opt/ros/humble/share/nav2_bringup/rviz/nav2_default_view.rviz
    ```
@@ -155,7 +161,7 @@ Sin robot, todo en el PC: `ros2 launch bumperbot_digital_twin digital_twin.launc
 | `twin_bridge` | Puente bidireccional (líder/seguidor, corrección, compensación de latencia, red emulada, comparación de LiDAR, registro CSV) |
 | `anomaly_detector` | Detecta atascos, deslizamiento, empujones y desvíos del modelo en el robot real |
 | `twin_dashboard` | Panel de control: métricas en vivo, gráficas, cambio de líder, red, recorridos |
-| `twin_experiment` | Corre un protocolo YAML completo y genera el informe estadístico |
+| `twin_experiment` | Corre un protocolo YAML completo (condiciones intercaladas, sesión retomable con `--resume`) y genera el informe estadístico |
 | `twin_calibrate` | Identifica el modelo dinámico (`dynamics`), calibra las ruedas (`wheels`), genera el recinto y su mapa (`arena`) |
 | `twin_tune` | Sintoniza las ganancias de la corrección simulando con el modelo del gemelo |
 | `twin_navigate` | Navegación con vista previa: el gemelo prueba la meta con Nav2 antes que el robot real |

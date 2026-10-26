@@ -7,6 +7,8 @@ source install/setup.bash
 source ci/annotate.sh
 export ROS_LOCALHOST_ONLY=1
 
+# Un reintento no debe analizar archivos del intento anterior
+rm -rf /tmp/twin_gz_logs /tmp/twin_gz_res /tmp/twin_gz_nav_logs /tmp/twin_gz_nav_res
 mkdir -p /tmp/twin_gz_logs
 setsid ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake twin_mode:=gazebo gui:=false rviz:=false \
   world_name:=arena arena:=[-0.5,2.0,-1.0,1.0] \

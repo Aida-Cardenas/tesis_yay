@@ -111,28 +111,73 @@ def speeds(d):
     return lv, fv
 
 
+CLOCK_LIMIT_S = 2.0
+
+
+def true_error_status(d):
+    """Por qué no se puede calcular el error real, o None si se puede."""
+    if "real_stamp" not in d:
+        return "sin sellos"
+    ok = np.isfinite(d["real_stamp"]) & np.isfinite(d["real_x"]) & np.isfinite(d["twin_x"])
+    if ok.sum() < 10:
+        return "sin sellos"
+    if abs(np.median(d["t"][ok] - d["real_stamp"][ok])) > CLOCK_LIMIT_S:
+        return "relojes"
+    return None
+
+
+def _interp_by(times, values, at):
+    s, idx = np.unique(times, return_index=True)
+    return np.interp(at, s, values[idx]), s[0], s[-1]
+
+
 def true_error(d):
     """Distancia entre el gemelo y el robot real en el mismo instante de reloj.
 
-    Devuelve NaN si no hay sellos de tiempo del robot real o si los relojes no
-    están sincronizados (diferencia mediana mayor a 2 s).
+    La pose real se interpola al instante de cada fila usando el sello de tiempo
+    de su odometría. La del gemelo, si el registro trae la hora en que llegó
+    (twin_rx), también se interpola, para que los dos robots se comparen en el
+    mismo instante y no con su último dato, que puede tener hasta un periodo de
+    atraso. Devuelve NaN si no hay sellos o si los relojes difieren en más de 2 s.
     """
     n = len(d["t"])
     out = np.full(n, math.nan)
-    if "real_stamp" not in d:
+    if true_error_status(d) is not None:
         return out
-    stamp = d["real_stamp"]
-    ok = np.isfinite(stamp) & np.isfinite(d["real_x"]) & np.isfinite(d["twin_x"])
-    if ok.sum() < 10 or abs(np.median(d["t"][ok] - stamp[ok])) > 2.0:
-        return out
-    s, idx = np.unique(stamp[ok], return_index=True)
-    rx = d["real_x"][ok][idx]
-    ry = d["real_y"][ok][idx]
-    inside = ok & (d["t"] >= s[0]) & (d["t"] <= s[-1])
-    tx = np.interp(d["t"][inside], s, rx)
-    ty = np.interp(d["t"][inside], s, ry)
-    out[inside] = np.hypot(d["twin_x"][inside] - tx, d["twin_y"][inside] - ty)
+    ok = np.isfinite(d["real_stamp"]) & np.isfinite(d["real_x"]) & np.isfinite(d["twin_x"])
+    rx, r0, r1 = _interp_by(d["real_stamp"][ok], d["real_x"][ok], d["t"])
+    ry, _, _ = _interp_by(d["real_stamp"][ok], d["real_y"][ok], d["t"])
+    inside = ok & (d["t"] >= r0) & (d["t"] <= r1)
+    tx, ty = d["twin_x"], d["twin_y"]
+    if "twin_rx" in d:
+        tw = np.isfinite(d["twin_rx"]) & np.isfinite(d["twin_x"])
+        if tw.sum() >= 10:
+            tx, t0, t1 = _interp_by(d["twin_rx"][tw], d["twin_x"][tw], d["t"])
+            ty, _, _ = _interp_by(d["twin_rx"][tw], d["twin_y"][tw], d["t"])
+            inside &= (d["t"] >= t0) & (d["t"] <= t1)
+    out[inside] = np.hypot(tx[inside] - rx[inside], ty[inside] - ry[inside])
     return out
+
+
+def compensation_without_rtt(d):
+    """Fracción de las filas con compensación activa en las que no había latencia medida."""
+    if "rtt_ema_ms" not in d or "compensation" not in d:
+        return math.nan
+    comp = d["compensation"] == 1
+    if not comp.any():
+        return math.nan
+    return float(np.mean(~np.isfinite(d["rtt_ema_ms"][comp])))
+
+
+def real_time_factor(d):
+    """Cuánto avanzó el reloj del gemelo por cada segundo de pared (1 = tiempo real)."""
+    if "twin_clock" not in d:
+        return math.nan
+    ok = np.isfinite(d["twin_clock"]) & np.isfinite(d["t"])
+    if ok.sum() < 10:
+        return math.nan
+    wall = d["t"][ok][-1] - d["t"][ok][0]
+    return float((d["twin_clock"][ok][-1] - d["twin_clock"][ok][0]) / wall) if wall > 0 else math.nan
 
 
 def flag(d, key):
@@ -170,6 +215,11 @@ def analyze(path, out_dir, plots=True):
         "error_posicion_m": stats(d["pos_error"][valid]),
         "error_posicion_en_movimiento_m": stats(d["pos_error"][moving]),
         "error_real_m": stats(err_true),
+        "error_real_sin_datos": true_error_status(d),
+        "desfase_relojes_ms": (float(np.nanmedian(d["clock_offset_ms"]))
+                               if "clock_offset_ms" in d and np.isfinite(d["clock_offset_ms"]).any() else math.nan),
+        "compensacion_sin_rtt": compensation_without_rtt(d),
+        "factor_tiempo_real": real_time_factor(d),
         "error_final_m": float(d["pos_error"][valid][-1]) if valid.any() else math.nan,
         "error_orientacion_deg": stats(np.degrees(np.abs(d["yaw_error"][valid]))),
         "rtt_ms": stats(d["rtt_ms"]),

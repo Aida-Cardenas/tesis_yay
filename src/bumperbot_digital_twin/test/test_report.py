@@ -8,6 +8,7 @@ from bumperbot_digital_twin import report
 
 
 def test_welch_t():
+    pytest.importorskip("scipy")
     t, df, p = report.welch_t([1.0, 1.1, 0.9, 1.05], [2.0, 2.1, 1.9, 2.05])
     assert t < 0 and p < 0.001
     assert math.isnan(report.welch_t([1.0], [2.0])[2])
@@ -20,6 +21,7 @@ def test_experiment_name_from_file():
 
 
 def test_build_report(tmp_path):
+    pytest.importorskip("scipy")
     paths = []
     for rep in range(1, 6):
         paths.append(write_run(tmp_path / f"twin_20260101_00000{rep}_A_r{rep}.csv", err=0.01 + rep * 0.001))
@@ -137,6 +139,7 @@ def test_comparisons_of_compensation_use_the_real_error():
 
 
 def test_welch_ignores_nan_runs():
+    pytest.importorskip("scipy")
     from bumperbot_digital_twin.report import welch_t
     t, df, p = welch_t([0.10, 0.11, 0.12, float("nan")], [0.20, 0.21, 0.22])
     assert p < 0.05
@@ -153,6 +156,7 @@ def test_deduplicated_log_name_keeps_experiment():
 
 
 def test_few_runs_are_not_conclusive_even_with_small_p():
+    pytest.importorskip("scipy")
     from bumperbot_digital_twin.report import compare
     c = compare([0.019, 0.0191], [0.017, 0.0171])
     assert c["p"] < 0.05
@@ -161,6 +165,7 @@ def test_few_runs_are_not_conclusive_even_with_small_p():
 
 # Valores de referencia de scipy.stats.ttest_ind(a, b, equal_var=False).confidence_interval(0.95) (scipy 1.17)
 def test_welch_interval_matches_reference():
+    pytest.importorskip("scipy")
     import numpy as np
     from bumperbot_digital_twin.report import welch_ci
     a, b = [0.12, 0.10, 0.11, 0.13, 0.12], [0.08, 0.09, 0.07, 0.08, 0.10]
@@ -196,3 +201,52 @@ def test_compared_experiments_have_enough_runs(name):
     for pair in protocol["comparisons"]:
         for exp in pair[:2]:
             assert steps[exp].get("repetitions", default) >= MIN_RUNS_FOR_TEST, (name, exp)
+
+
+def test_holm_adjustment():
+    from bumperbot_digital_twin.report import holm
+    adj = holm([0.01, 0.04, float("nan"), 0.03])
+    assert adj[0] == pytest.approx(0.03)
+    assert adj[3] == pytest.approx(0.06)
+    assert adj[1] == pytest.approx(0.06)
+    assert math.isnan(adj[2])
+
+
+def test_zero_variance_keeps_the_sign_and_needs_scipy_for_p():
+    pytest.importorskip("scipy")
+    from bumperbot_digital_twin.report import welch_t
+    t, df, p = welch_t([1.0] * 5, [2.0] * 5)
+    assert t == -math.inf and p == 0.0
+
+
+def test_missing_experiment_and_clock_problems_are_visible(tmp_path):
+    pytest.importorskip("scipy")
+    paths = []
+    for rep in range(1, 6):
+        paths.append(write_run(tmp_path / f"twin_20260101_00000{rep}_A_r{rep}.csv"))
+        paths.append(write_run(tmp_path / f"twin_20260101_00001{rep}_B_r{rep}.csv",
+                               extra={"real_stamp": 5000.0}))
+    protocol = {"experiments": [{"name": "A"}, {"name": "B"}, {"name": "C"}],
+                "comparisons": [["A", "B", "rmse_real"], ["A", "C"]]}
+    md, _, cmp = report.build_report([str(p) for p in paths], str(tmp_path / "inf"), protocol, plots=False)
+    by = {(c["a"], c["b"]): c for c in cmp}
+    assert by[("A", "B")]["veredicto"] == "sin datos (relojes desincronizados)"
+    assert by[("A", "C")]["veredicto"].startswith("sin datos (no hay corridas de C")
+    assert "p (Holm)" in md
+
+
+def test_report_from_a_session_folder_uses_only_its_valid_runs(tmp_path, capsys):
+    from bumperbot_digital_twin.session import Session
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    good = write_run(logs / "twin_20260101_000001_A_r1.csv")
+    bad = write_run(logs / "twin_20260101_000002_A_r2.csv")
+    write_run(logs / "twin_20260101_000003_A_r3.csv")
+    session = Session(str(tmp_path / "sesion"))
+    session.record(experimento="A", repeticion=1, registro=str(good), completa=True)
+    session.record(experimento="A", repeticion=2, registro=str(bad), completa=False)
+    report.main([str(tmp_path / "sesion"), "-o", str(tmp_path / "inf"), "--no-plots"])
+    assert "1 corridas completas y válidas, 1 descartadas" in capsys.readouterr().out
+    import json
+    data = json.load(open(tmp_path / "inf" / "informe.json"))
+    assert data["experimentos"]["A"]["corridas"] == 1

@@ -21,7 +21,10 @@ from bumperbot_digital_twin.geometry import (
 from bumperbot_digital_twin.trajectories import build_segments
 
 DEFAULT_GAINS = {"kx": 1.5, "ky": 6.0, "ktheta": 3.0}
-BOUNDS = {"kx": (0.2, 6.0), "ky": (0.5, 30.0), "ktheta": (0.3, 10.0)}
+# Límites de la búsqueda. Antes eran ky ≥ 0,5 y kθ ≥ 0,3, y con 300 ms de retardo
+# el óptimo quedaba pegado a ellos: se ampliaron y el resultado avisa si alguna
+# ganancia termina en un límite (at_bounds).
+BOUNDS = {"kx": (0.05, 6.0), "ky": (0.05, 30.0), "ktheta": (0.05, 10.0)}
 
 
 @dataclass
@@ -115,19 +118,19 @@ def simulate(gains, scenario, real_model=NOMINAL_MODEL, twin_model=NOMINAL_MODEL
         leader_cmd = (segments[seg_idx][1], segments[seg_idx][2]) if seg_idx < len(segments) else (0.0, 0.0)
 
         hist_leader.append((leader.pose, leader.v, leader.w, leader_cmd))
-        hist_follower.append(follower.pose)
+        hist_follower.append((follower.pose, follower.v, follower.w))
 
         if k % steps_per_tick == 0:
             li = len(hist_leader) - 1 - (0 if follower_real else lag)
             fi = len(hist_follower) - 1 - (lag if follower_real else 0)
             L_pose, L_v, L_w, L_cmd = hist_leader[max(li, 0)]
-            F_raw = hist_follower[max(fi, 0)]
+            F_raw, F_v, F_w = hist_follower[max(fi, 0)]
             ref, F_pose = L_pose, F_raw
             if scenario.compensation and d > 0:
                 cmd_delay = d if follower_real else 0.0
                 ref = integrate_unicycle(L_pose, L_v, L_w, cmd_delay + (0.0 if follower_real else d))
                 if follower_real:
-                    F_pose = smith_predict(F_raw, sent, t, d, d)
+                    F_pose = smith_predict(F_raw, sent, t, d, d, model=real_model, v0=F_v, w0=F_w)
             err = tracking_error(ref, F_pose)
             cmd = tracking_command(L_cmd[0], L_cmd[1], err, tg, True)
             if follower_real:
@@ -226,6 +229,7 @@ class TuningResult:
     evaluations: int
     per_scenario: list
     history: list = field(repr=False, default_factory=list)
+    at_bounds: list = field(default_factory=list)
 
 
 def tune(scenarios, real_model=NOMINAL_MODEL, twin_model=NOMINAL_MODEL, limits=Limits(),
@@ -267,7 +271,10 @@ def tune(scenarios, real_model=NOMINAL_MODEL, twin_model=NOMINAL_MODEL, limits=L
     per_scenario = [{"escenario": s.name, "rmse_antes": a.rmse, "rmse_despues": b.rmse,
                      "max_antes": a.max_error, "max_despues": b.max_error}
                     for s, a, b in zip(scenarios, per_default, per)]
-    return TuningResult(gains, best_cost, default_cost, len(history), per_scenario, history)
+    at_bounds = [k for k in ("kx", "ky", "ktheta")
+                 if abs(math.log(gains[k]) - math.log(BOUNDS[k][0])) < 0.01
+                 or abs(math.log(gains[k]) - math.log(BOUNDS[k][1])) < 0.01]
+    return TuningResult(gains, best_cost, default_cost, len(history), per_scenario, history, at_bounds)
 
 
 def save_gains(path, gains, info=None):

@@ -1,4 +1,5 @@
 # Protocolo corto para las pruebas automáticas (dos robots de mentira).
+# Con 2 repeticiones sus comparaciones son solo indicativas (no concluyentes).
 name: protocolo_ci
 defaults:
   repetitions: 2
@@ -14,13 +15,19 @@ defaults:
 experiments:
   - {name: M, description: Solo copia comandos, feedback: false}
   - {name: CAL, calibrate_from: [M]}
+  - {name: TUNE, tune: {follower: [real], delay_ms: [300], patterns: [square]}}
   - {name: MC, description: Solo copia comandos con gemelo calibrado, feedback: false, twin_model: true}
   - {name: D, description: 200 ms sin compensación, net_delay_ms: 200}
   - {name: DC, description: 200 ms con compensación, net_delay_ms: 200, compensation: true}
   - {name: R, description: Real sigue al gemelo con 300 ms, leader: twin, net_delay_ms: 300}
   - {name: RC, description: Real sigue al gemelo con 300 ms y predictor de Smith, leader: twin, net_delay_ms: 300, compensation: true}
-  - {name: TUNE, tune: {follower: [real], delay_ms: [300], patterns: [square]}}
   - {name: RT, description: Real sigue al gemelo con 300 ms y ganancias sintonizadas, leader: twin, net_delay_ms: 300, gains: tuned}
+
+# Mismo orden intercalado que los protocolos reales, para probar ese camino del código.
+# M y MC no se intercalan: MC necesita el modelo que se calibra con M.
+interleave:
+  - [D, DC]
+  - [R, RC, RT]
 
 comparisons:
   - [M, MC]
