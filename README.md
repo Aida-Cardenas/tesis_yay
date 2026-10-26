@@ -33,7 +33,8 @@ tesis-gemelo-digital-wmr/          <- esta carpeta ES el workspace (colcon build
 ├── docs/RESPUESTA_REVISION.md  qué se hizo con cada punto de la primera revisión de código
 ├── docs/RESPUESTA_REVISION_2.md  ídem para la segunda revisión
 ├── docs/RESPUESTA_REVISION_3.md  ídem para la tercera revisión
-└── docs/RESPUESTA_REVISION_4.md  ídem para la cuarta revisión
+├── docs/RESPUESTA_REVISION_4.md  ídem para la cuarta revisión
+└── docs/REVISION_GENERAL.md     revisión de errores y seguridad antes de cargar el código en el robot
 ```
 
 ## Requisitos

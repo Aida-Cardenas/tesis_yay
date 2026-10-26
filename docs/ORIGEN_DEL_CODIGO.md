@@ -122,6 +122,8 @@ Algunos de estos archivos se quitaron en la limpieza (ver arriba); la tabla se d
 | La interfaz integraba la posición de las ruedas con el reloj del sistema y `ReadLine` podía bloquear el lazo de control con una línea a medias | `bumperbot_interface.cpp` | Integra con el periodo de ros2_control y lee solo los bytes ya recibidos |
 | Faltaban dependencias en `package.xml` (solo se notaba al compilar paquetes sueltos) | `bumperbot_description`, `bumperbot_firmware` | Agregadas |
 | El bloqueo por atasco del gemelo usaba el mismo lock de `twist_mux` que `safety_stop`, así que uno podía liberar al otro | `anomaly_detector.py`, `twist_mux_locks.yaml` | Lock propio, `anomaly_stop` |
+| `safety_stop` tomaba como obstáculo cualquier lectura finita, también las menores que `range_min` (el LiDAR viéndose a sí mismo), y podía dejar el robot detenido para siempre | `safety_stop.cpp` | Solo cuenta lecturas dentro de `[range_min, range_max]` |
+| Un comando no finito (NaN) se enviaba como `nan`, y el sketch toma la `n` como "invertir sentido" | `serial_protocol.cpp` | Se envía 0; la magnitud se limita a 99,99 para que siempre quepa en los 5 caracteres que lee el sketch |
 
 `robot_control_inverted.ino` se eliminó: además de cambiar los lados invertía el sentido de motores y encoders, y con la interfaz corregida ya no hace falta. El único firmware es `robot_control.ino`. Si el robot estaba cableado para el sketch invertido, con el actual puede andar hacia atrás aunque la odometría parezca correcta; el README explica cómo comprobarlo (paso 5 de "Uso con el robot real").
 
