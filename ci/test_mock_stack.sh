@@ -54,7 +54,8 @@ done
 check "detector de anomalías activo" bash -c "ros2 node list | grep anomaly_detector"
 check "twist_mux con entrada twin_vel" bash -c "ros2 param get /twist_mux topics.digital_twin.topic | grep twin_vel"
 timeout 6 ros2 topic pub -r 10 /key_vel geometry_msgs/msg/Twist "{linear: {x: 0.2}}" > /dev/null 2>&1
-check "el robot avanza con key_vel" bash -c "x=\$(ros2 topic echo --once --field pose.pose.position.x /odometry/filtered | head -n1); echo x=\$x; python3 -c \"import sys; sys.exit(0 if float('\$x') > 0.3 else 1)\""
+# ros2 topic echo can print "A message was lost!!!" before the value: take the first number
+check "el robot avanza con key_vel" bash -c "x=\$(ros2 topic echo --once --field pose.pose.position.x /odometry/filtered | grep -m1 -E '^-?[0-9]'); echo x=\$x; python3 -c \"import sys; sys.exit(0 if float('\$x') > 0.3 else 1)\""
 
 timeout -s INT 9 ros2 run bumperbot_digital_twin twin_odom_meter > /tmp/odom_meter.txt 2>&1 &
 MPID=$!
