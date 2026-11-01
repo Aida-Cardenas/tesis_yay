@@ -44,7 +44,7 @@ Pruebas: gtests nuevos (posición desde los contadores, líneas perdidas, contad
 
 ## Resultado de CI
 
-Corrida del 26 de octubre de 2026 (commit `a217acb`): todas las pruebas aprobadas, el sketch compilado para Uno y Nano, y el robot con hardware simulado con los siete nodos de Nav2 en `active [3]`. La prueba de Gazebo necesitó el reintento (en el primer intento los sensores de Gazebo sin ventana no llegaron a publicar) y el aviso lo mostró. Los números de `GEMELO_DIGITAL.md`, sección 14, son los de esta corrida.
+Corrida del 26 de octubre de 2026 (commit `a217acb`): todas las pruebas aprobadas, el sketch compilado para Uno y Nano, y el robot con hardware simulado con los siete nodos de Nav2 en `active [3]`. La prueba de Gazebo necesitó el reintento (en el primer intento los sensores de Gazebo sin ventana no llegaron a publicar) y el aviso lo mostró. Los números de `GEMELO_DIGITAL.md`, sección 14, eran los de esta corrida; desde la quinta revisión son los de `d3e2a7e`.
 
 `protocolo_ci` (n = 2, no concluyente por diseño; error real):
 

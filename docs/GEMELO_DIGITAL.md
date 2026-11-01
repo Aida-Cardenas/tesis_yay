@@ -268,35 +268,35 @@ Análisis de una corrida: `ros2 run bumperbot_digital_twin analyze_twin_log ~/tw
 7. El robot real completo con hardware simulado (ros2_control mock) + EKF + Nav2 + detector + medidor de odometría, y el gemelo siguiéndolo. Cada nodo de Nav2 debe quedar en `active [3]`; como el hardware simulado no tiene LiDAR, se publica un `map → odom` fijo para que AMCL no haga falta.
 8. El gemelo en Gazebo sin ventana, en el recinto, siguiendo a un robot real de mentira, y una meta de navegación con vista previa usando Nav2 y AMCL del gemelo. Comprueba además que el LiDAR de Gazebo publica en `laser_link`.
 
-Resultados de la corrida automática del 26 de octubre de 2026 (commit `a217acb`, con la odometría por contadores y el desempate de la sintonización; todas las pruebas aprobadas; todo simulado, en un solo computador). La prueba de Gazebo necesitó el reintento: en el primer intento los sensores de Gazebo sin ventana no llegaron a publicar.
+Resultados de la corrida automática del 1 de noviembre de 2026 (commit `d3e2a7e`, con los cambios de la quinta revisión; todas las pruebas aprobadas, Gazebo al primer intento; todo simulado, en un solo computador).
 
 **Sincronización y LiDAR** (robot "real" de mentira y gemelo con 10 % menos de velocidad, cuadrado de 0,6 m a 0,3 m/s, ambos en un recinto de 2 × 2 m):
 
 | Líder | Corrección | Error medio | Error máximo | Error final | MAE del LiDAR | Anomalías |
 |---|---|---|---|---|---|---|
-| real | sí | 0,8 cm | 2,2 cm | 0,5 cm | 2,1 cm | ninguna |
-| real | no (espejo) | 15,5 cm | 25,0 cm | 25,0 cm | 1,6 cm | ninguna |
-| gemelo | sí | 1,0 cm | 2,9 cm | 0,8 cm | 2,0 cm | ninguna |
+| real | sí | 1,0 cm | 2,2 cm | 0,7 cm | 2,1 cm | ninguna |
+| real | no (espejo) | 15,7 cm | 25,8 cm | 25,8 cm | 1,6 cm | ninguna |
+| gemelo | sí | 1,0 cm | 3,0 cm | 0,8 cm | 2,0 cm | ninguna |
 
 **Fallas inyectadas:** atasco, deslizamiento y empujón se detectaron cada uno como su tipo, sin falsas alarmas de los otros.
 
-**Protocolo completo** (`protocolo_ci` con `twin_experiment --auto`, 2 repeticiones, D/DC y R/RC/RT intercalados; el robot "real" de mentira tiene K = 0,85, τ = 0,3 s y 0,1 s de retardo, y el gemelo responde casi ideal). Las filas de latencia usan el error real entre los dos robots en el mismo instante (`rmse_real`); M y MC no tienen retardo de red y los dos errores coinciden. Con 2 repeticiones, **ninguna comparación es concluyente**: los p se muestran solo como indicación.
+**Protocolo completo** (`protocolo_ci` con `twin_experiment --auto`, 2 repeticiones, D/DC y R/RC/RT intercalados; el robot "real" de mentira tiene K = 0,85, τ = 0,3 s y 0,1 s de retardo, y el gemelo responde casi ideal). Las filas de latencia usan el error real entre los dos robots en el mismo instante (`rmse_real`); M y MC no tienen retardo de red y los dos errores coinciden. Con 2 repeticiones, **ninguna comparación es concluyente**: los p (sin corregir) se muestran solo como indicación.
 
 | Experimento | RMSE de posición | Reducción | p de Welch (n = 2) |
 |---|---|---|---|
-| M: solo copia comandos | 23,8 cm | | |
-| MC: solo copia comandos, gemelo calibrado | 2,2 cm | −91 % | 0,016 |
-| D: red de 200 ms, sin compensación | 2,0 cm | | |
-| DC: red de 200 ms, con compensación | 1,9 cm | −5 % | 0,187 |
-| R: el real sigue al gemelo, red de 300 ms | 24,7 cm | | |
-| RC: lo mismo con predictor de Smith (con el modelo identificado) | 14,1 cm | −43 % | 0,024 |
-| RT: lo mismo con ganancias sintonizadas (kx 0,5 / ky 3,4 / kθ 0,3) | 16,7 cm | −32 % | 0,279 |
+| M: solo copia comandos | 24,6 cm | | |
+| MC: solo copia comandos, gemelo calibrado | 2,6 cm | −89 % | 0,020 |
+| D: red de 200 ms, sin compensación | 1,9 cm | | |
+| DC: red de 200 ms, con compensación | 1,9 cm | 0 % | 0,929 |
+| R: el real sigue al gemelo, red de 300 ms | 24,6 cm | | |
+| RC: lo mismo con predictor de Smith (con el modelo identificado) | 14,1 cm | −43 % | 0,047 |
+| RT: lo mismo con ganancias sintonizadas (kx 0,4 / ky 2,6 / kθ 0,3) | 16,7 cm | −32 % | 0,294 |
 
 El gemelo calibrado y el predictor de Smith con el robot real como seguidor dan mejoras grandes. Con el gemelo como seguidor (D/DC), la compensación casi no cambia el error real: el RMSE compensado que mide el propio puente baja de 3,4 a 2,0 cm, pero eso es la corrección alcanzando la pose extrapolada, no al robot real.
 
-Punto abierto de la sintonización. En la simulación, ky casi no cambia el costo (11,4 cm de error con ky = 0,5 y 11,5 cm con ky = 4,1), así que, sin desempate, la búsqueda terminaba en valores muy distintos de una corrida a otra: ky 4,1 (RT 17,0 cm, commit `54c6e7c`) y ky 0,5 (RT 12,6 cm, commit `da36973`). Con el desempate hacia las ganancias por defecto (sección 10) eligió ky 3,4 y RT dio 16,7 cm. El desempate hace que la elección no dependa de dónde termina la búsqueda, pero no resuelve el fondo: el robot de mentira anduvo mejor con ky bajo, y la simulación no capta esa diferencia. Con una sola corrida tampoco se puede afirmar todavía que el resultado se repita. G0T y L250RT con el robot físico dirán cuánto valen las ganancias sintonizadas.
+Punto abierto de la sintonización. En la simulación, ky casi no cambia el costo (11,4 cm de error con ky = 0,5 y 11,5 cm con ky = 4,1), así que, sin desempate, la búsqueda terminaba en valores muy distintos de una corrida a otra: ky 4,1 (RT 17,0 cm, commit `54c6e7c`) y ky 0,5 (RT 12,6 cm, commit `da36973`). Con el desempate hacia las ganancias por defecto (sección 10), las dos corridas eligieron ky 3,4 (`a217acb`) y ky 2,6 (`d3e2a7e`, con un modelo identificado apenas distinto), y RT dio 16,7 cm en las dos. El desempate hace que la elección no dependa de dónde termina la búsqueda y el resultado se repitió, pero no resuelve el fondo: el robot de mentira anduvo mejor con ky bajo, y la simulación no capta esa diferencia. G0T y L250RT con el robot físico dirán cuánto valen las ganancias sintonizadas.
 
-El modelo identificado a partir de M fue K = 0,84, τ = 0,28 s y L = 0,110 s en la velocidad lineal, y K = 0,85, τ = 0,30 s y L = 0,092 s en la angular (R² de la respuesta simulada = 0,999 en ambas), cercano a los valores con que se configuró el robot de mentira. Entre corridas, el retardo identificado cae a ambos lados de 0,1 s, lo que se parece más a ruido de cuantización (el robot de mentira avanza con pasos de Euler a 50 Hz y el registro muestrea a 20 Hz) que a un atraso sistemático.
+El modelo identificado a partir de M fue K = 0,86, τ = 0,30 s y L = 0,088 s en la velocidad lineal, y K = 0,85, τ = 0,29 s y L = 0,091 s en la angular (R² de la respuesta simulada = 0,999 en ambas), cercano a los valores con que se configuró el robot de mentira. Entre corridas, el retardo identificado cae a ambos lados de 0,1 s, lo que se parece más a ruido de cuantización (el robot de mentira avanza con pasos de Euler a 50 Hz y el registro muestrea a 20 Hz) que a un atraso sistemático.
 
 **Navegación con vista previa** (navegadores de mentira, recinto `arena`):
 

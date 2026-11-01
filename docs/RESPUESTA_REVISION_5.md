@@ -2,7 +2,7 @@
 
 Qué se hizo con cada punto de la quinta revisión (1 de noviembre de 2026, sobre `0e91290`). Las respuestas anteriores están en [`RESPUESTA_REVISION.md`](RESPUESTA_REVISION.md), [`RESPUESTA_REVISION_2.md`](RESPUESTA_REVISION_2.md), [`RESPUESTA_REVISION_3.md`](RESPUESTA_REVISION_3.md), [`RESPUESTA_REVISION_4.md`](RESPUESTA_REVISION_4.md) y [`RESPUESTA_OPTIMIZACION.md`](RESPUESTA_OPTIMIZACION.md). Los documentos anteriores que afirmaban algo que la revisión mostró falso tienen ahora una nota en el lugar (N5-11).
 
-**Resultado de CI:** pendiente.
+**Resultado de CI:** corrida del 1 de noviembre de 2026 (commit `d3e2a7e`), todas las pruebas aprobadas: los 27 gtest, todo pytest con la integración de dos robots de mentira (que ahora revisa la diferencia de relojes y el RTT de cada corrida en `sesion.json`), el sketch compilado para Uno y Nano, el robot con hardware simulado con los siete nodos de Nav2 en `active [3]`, y Gazebo con Nav2 al primer intento. Los números de `GEMELO_DIGITAL.md`, sección 14, son los de esta corrida. En `protocolo_ci` (n = 2, no concluyente por diseño; error real): M 24,6 → MC 2,6 cm (p = 0,020), D 1,9 → DC 1,9 cm, R 24,6 → RC 14,1 cm (p = 0,047) y RT 16,7 cm con ky 2,6 (p = 0,294). RT dio lo mismo que en `a217acb`.
 
 Todos los cambios respetan lo que pidieron las revisiones anteriores. Donde un punto toca uno anterior, la tabla dice cómo queda.
 
