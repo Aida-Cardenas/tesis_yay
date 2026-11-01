@@ -2,7 +2,9 @@
 
 Qué se hizo con cada punto de la sexta revisión (1 de noviembre de 2026, sobre `87885d2`). La revisión no encontró nada alto ni medio y dice que nada impide la toma de datos; estos son los tres puntos bajos que pidió resolver antes de la sesión y los dos de mantenimiento. Las respuestas anteriores están en [`RESPUESTA_REVISION_5.md`](RESPUESTA_REVISION_5.md) y las que esta enlaza.
 
-**Resultado de CI:** pendiente.
+**Resultado de CI:** corrida del 1 de noviembre de 2026 (commit `50719e5`), todas las pruebas aprobadas: los 29 gtest, todo pytest con la integración de dos robots de mentira, el sketch compilado para Uno y Nano, el robot con hardware simulado con Nav2 en `active [3]`, y Gazebo con Nav2 al primer intento. La corrida anterior (`ad8bece`) falló en un solo paso del robot con hardware simulado: `ros2 topic echo` escribió "A message was lost!!!" antes del número que leía el script de CI; ese paso no usa el protocolo serie. El script ahora toma la primera línea numérica (`ci/test_mock_stack.sh`).
+
+Los robots de mentira de CI no usan el protocolo serie, así que los números de `protocolo_ci` no cambian con esta revisión, pero sí varían de una corrida a otra (n = 2). En las dos corridas de esta revisión, con el error real: M 24,6 / 24,2 → MC 2,6 / 2,0 cm; R 24,2 / 25,4 → RC 14,1 / 14,1 cm; RT 12,4 cm (ky 3,0) y 16,8 cm (ky 2,7). RC se repite casi exacto; RT no, lo que confirma que la sintonización sigue siendo el punto abierto de `GEMELO_DIGITAL.md`, sección 14, y que se decide con G0T y L250RT en el robot físico. Los números de esa sección siguen siendo los de `d3e2a7e`.
 
 | # | Observación | Estado | Cambio | Comprobación |
 |---|---|---|---|---|
