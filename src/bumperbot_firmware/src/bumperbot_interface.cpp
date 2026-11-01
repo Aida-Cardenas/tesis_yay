@@ -144,8 +144,10 @@ CallbackReturn BumperbotInterface::on_activate(const rclcpp_lifecycle::State &)
   waiting_reported_ = false;
   stop_sent_reported_ = false;
   port_failed_ = false;
+  fault_seen_ = false;
   link_ = LinkAction::kWait;
   activated_at_ = clock_->now().seconds();
+  last_line_at_ = 0.0;
 
   try
   {
@@ -281,12 +283,17 @@ hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
                            "and the time (rc, lc, t) come from an old sketch: load robot_control.ino again",
                            message.c_str());
     }
+    last_line_at_ = now;
     if (reading.right_fault || reading.left_fault)
     {
+      // From here on only zero is sent, also if the Arduino restarts: the robot
+      // stays stopped until the launch is restarted, after fixing the wiring.
+      fault_seen_ = true;
       RCLCPP_ERROR_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 2000,
-                            "The Arduino stopped the %s wheel: it turned backwards at almost full PWM. "
-                            "Its encoder (or motor) is wired the wrong way round: swap the encoder phases "
-                            "A and B (or the motor wires) and reset the Arduino",
+                            "The Arduino stopped both wheels because of the %s wheel: it turned backwards "
+                            "at almost full PWM (encoder or motor wired the wrong way round: swap the "
+                            "encoder phases A and B, or the motor wires) or did not turn at full PWM (loose "
+                            "encoder wire or blocked wheel). Fix it, reset the Arduino and restart the launch",
                             reading.right_fault && reading.left_fault ? "right and left" :
                             reading.right_fault ? "right" : "left");
     }
@@ -306,7 +313,7 @@ hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
   const bool stale = wheels_.advance(now, period.seconds());
   const bool waiting = !wheels_.has_reading();
   const double quiet = waiting ? now - activated_at_ : wheels_.seconds_since_reading(now);
-  link_ = link_action(!waiting, quiet);
+  link_ = link_action(!waiting, quiet, now - std::max(last_line_at_, activated_at_));
   if (waiting)
   {
     // Opening the port resets the Arduino, and its bootloader is silent for up
@@ -338,7 +345,7 @@ hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
   if (link_ == LinkAction::kReconnect && !port_failed_)
   {
     RCLCPP_WARN(rclcpp::get_logger("BumperbotInterface"),
-                "No data from the Arduino for %.0f s: reopening %s", quiet, port_.c_str());
+                "Nothing received from the Arduino for 5 s: reopening %s", port_.c_str());
     port_failed_ = true;
     last_reconnect_try_ = 0.0;
   }
@@ -363,8 +370,8 @@ hardware_interface::return_type BumperbotInterface::write(const rclcpp::Time &,
   {
     return hardware_interface::return_type::OK;
   }
-  const bool send_zero = link_ == LinkAction::kSendZero;
-  if (send_zero && !stop_sent_reported_)
+  const bool send_zero = link_ == LinkAction::kSendZero || fault_seen_;
+  if (send_zero && !fault_seen_ && !stop_sent_reported_)
   {
     RCLCPP_WARN(rclcpp::get_logger("BumperbotInterface"), "No feedback from the Arduino: sending zero speed");
   }

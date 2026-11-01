@@ -335,31 +335,89 @@ TEST(WheelIntegrator, BrakingDoesNotShowAReverseSpeed)
 {
   // Braking at a constant 20 rad/s^2. diff_drive_controller takes the speed from
   // the position over its last 10 cycles (100 ms): it must never be negative
-  // while the wheel slows down, and the position stays close to the real one.
-  WheelIntegrator w(0.3, 0.001);
+  // while the wheel slows down, also with one lost line, and without lost lines
+  // the position stays close to the real one.
   auto travel = [](double t) {
       const double braking = std::min(std::max(0.0, t - 0.3), 0.75);
       return 15.0 * std::min(t, 0.3) + 15.0 * braking - 10.0 * braking * braking;
     };
+  for (int lost = 0; lost <= 12; ++lost)
+  {
+    WheelIntegrator w(0.3, 0.001);
+    std::vector<double> shown;
+    for (int step = 1; step <= 150; ++step)
+    {
+      const double t = 0.01 * step;
+      if (step % 10 == 0 && (step / 10 != lost || lost == 0))
+      {
+        const double average = (travel(t) - travel(t - 0.1)) / 0.1;
+        const auto counts = static_cast<unsigned>(std::lround(travel(t) / 0.001));
+        feed(w, t, average, 0.0, counts, 0);
+      }
+      else
+      {
+        w.advance(t, 0.01);
+      }
+      shown.push_back(w.right_position());
+      if (step >= 20)
+      {
+        EXPECT_GE(shown[step - 1] - shown[step - 11], -1e-9) << "t = " << t << ", lost " << lost;
+        if (lost == 0)
+        {
+          EXPECT_NEAR(w.right_position(), travel(t) - travel(0.1), 0.12) << "t = " << t;
+        }
+      }
+    }
+  }
+}
+
+// Accelerating at a constant rate up to a cruise speed, the way diff_drive's
+// limits ramp the commands. Returns the lowest speed diff_drive would see
+// (position over its last 10 cycles) once the wheel cruises. `lost` is the
+// reading that never arrives (0: none).
+double lowest_cruise_speed(double accel, double cruise, int lost)
+{
+  WheelIntegrator w(0.3, 0.001);
+  const double ramp_end = 0.2 + cruise / accel;
+  auto travel = [&](double t) {
+      const double ramp = std::min(std::max(0.0, t - 0.2), cruise / accel);
+      return 0.5 * accel * ramp * ramp + cruise * std::max(0.0, t - ramp_end);
+    };
   std::vector<double> shown;
+  double lowest = INFINITY;
   for (int step = 1; step <= 150; ++step)
   {
     const double t = 0.01 * step;
-    if (step % 10 == 0)
+    if (step % 10 == 0 && step / 10 != lost)
     {
       const double average = (travel(t) - travel(t - 0.1)) / 0.1;
-      const auto counts = static_cast<unsigned>(std::lround(travel(t) / 0.001));
-      feed(w, t, average, 0.0, counts, 0);
+      feed(w, t, average, 0.0, static_cast<unsigned>(std::lround(travel(t) / 0.001)), 0);
     }
     else
     {
       w.advance(t, 0.01);
     }
     shown.push_back(w.right_position());
-    if (step >= 20)
+    if (step > 10 && t > ramp_end + 0.1)
     {
-      EXPECT_GE(shown[step - 1] - shown[step - 11], -1e-9) << "t = " << t;
-      EXPECT_NEAR(w.right_position(), travel(t) - travel(0.1), 0.12) << "t = " << t;
+      lowest = std::min(lowest, (shown[step - 1] - shown[step - 11]) / 0.1);
+    }
+  }
+  return lowest;
+}
+
+TEST(WheelIntegrator, ReachingCruiseSpeedDoesNotShowADip)
+{
+  // 21 rad/s^2 is diff_drive's 0.7 m/s^2; 34 rad/s^2 adds the turn limit
+  for (const double accel : {21.0, 34.0})
+  {
+    for (const double cruise : {3.0, 4.5})
+    {
+      EXPECT_GE(lowest_cruise_speed(accel, cruise, 0), 0.9 * cruise) << accel << " -> " << cruise;
+      for (int lost = 3; lost <= 7; ++lost)
+      {
+        EXPECT_GE(lowest_cruise_speed(accel, cruise, lost), 0.0) << accel << " -> " << cruise << ", lost " << lost;
+      }
     }
   }
 }
@@ -390,14 +448,22 @@ TEST(WheelIntegrator, TrendIsNotTrustedAfterLostLines)
 
 TEST(ArduinoLink, WriteFollowsHowLongTheArduinoHasBeenQuiet)
 {
-  EXPECT_EQ(link_action(false, 0.0), LinkAction::kWait);
-  EXPECT_EQ(link_action(false, 4.9), LinkAction::kWait);
-  EXPECT_EQ(link_action(false, 5.1), LinkAction::kReconnect);
-  EXPECT_EQ(link_action(true, 0.05), LinkAction::kSend);
-  EXPECT_EQ(link_action(true, 0.3), LinkAction::kSend);
-  EXPECT_EQ(link_action(true, 0.31), LinkAction::kSendZero);
-  EXPECT_EQ(link_action(true, 1.0), LinkAction::kSendZero);
-  EXPECT_EQ(link_action(true, 1.01), LinkAction::kSilent);
-  EXPECT_EQ(link_action(true, 5.0), LinkAction::kSilent);
-  EXPECT_EQ(link_action(true, 5.01), LinkAction::kReconnect);
+  // Nothing arrives at all: the second time equals the first
+  EXPECT_EQ(link_action(false, 0.0, 0.0), LinkAction::kWait);
+  EXPECT_EQ(link_action(false, 4.9, 4.9), LinkAction::kWait);
+  EXPECT_EQ(link_action(false, 5.1, 5.1), LinkAction::kReconnect);
+  EXPECT_EQ(link_action(true, 0.05, 0.05), LinkAction::kSend);
+  EXPECT_EQ(link_action(true, 0.3, 0.3), LinkAction::kSend);
+  EXPECT_EQ(link_action(true, 0.31, 0.31), LinkAction::kSendZero);
+  EXPECT_EQ(link_action(true, 1.0, 1.0), LinkAction::kSendZero);
+  EXPECT_EQ(link_action(true, 1.01, 1.01), LinkAction::kSilent);
+  EXPECT_EQ(link_action(true, 5.0, 5.0), LinkAction::kSilent);
+  EXPECT_EQ(link_action(true, 5.01, 5.01), LinkAction::kReconnect);
+}
+
+TEST(ArduinoLink, AnOldSketchIsNotResetOverAndOver)
+{
+  // Lines keep arriving but none is complete (no `t`): the Arduino is alive
+  EXPECT_EQ(link_action(false, 30.0, 0.05), LinkAction::kWait);
+  EXPECT_EQ(link_action(true, 30.0, 0.05), LinkAction::kSilent);
 }

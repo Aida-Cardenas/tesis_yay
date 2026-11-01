@@ -345,10 +345,6 @@ class Runner:
         done = self.session.done()
         for segment in build_schedule(self.steps, self.protocol, seed, self.args.repetitions):
             step = segment.get("step")
-            if segment["kind"] in ("tune", "calibrate"):
-                # [x] only repeats a run of the same block: the model and the
-                # gains were already made from the runs before this point
-                self.last_item = None
             if segment["kind"] == "tune":
                 if self.tuned_gains is None and (only is None or step.get("name") in only):
                     print(f"\n── Sintonización de ganancias con el gemelo ({step.get('name', 'TUNE')})")
@@ -357,8 +353,12 @@ class Runner:
             if segment["kind"] == "calibrate":
                 wanted = only is None or step.get("name") in only or any(s in only for s in step["calibrate_from"])
                 if self.model_path is None and wanted:
+                    if not self.confirm_last_run(step):
+                        return self.finish()
                     print(f"\n── Calibración del gemelo con {', '.join(step['calibrate_from'])}")
                     self.calibrate(step)
+                # The runs before this point are in the model: [x] can no longer reach them
+                self.last_item = None
                 continue
             items = [(st, k) for st, k in segment["items"] if only is None or st["name"] in only]
             if not items:
@@ -387,16 +387,49 @@ class Runner:
                     if self.last_item is None:
                         print("   No hay una corrida anterior de esta ejecución que repetir.")
                         continue
-                    bad = self.session.invalidate_last("el operador la marcó como mal hecha")
-                    prev = self.logs.get(bad["experimento"], [])
-                    if bad["registro"] in prev:
-                        prev.remove(bad["registro"])
                     queue.push_front(self.last_item)
-                    self.last_item = None
-                    print(f"   {bad['experimento']}_r{bad['repeticion']} descartada; se repite ahora.")
+                    self.discard_last()
                     continue
                 self.last_item = item
         return self.finish()
+
+    def discard_last(self):
+        """Descarta la última corrida completa ([x]): no cuenta y su registro sale de la lista."""
+        bad = self.session.invalidate_last("el operador la marcó como mal hecha")
+        self.last_item = None
+        if bad is None:
+            return None
+        prev = self.logs.get(bad["experimento"], [])
+        if bad["registro"] in prev:
+            prev.remove(bad["registro"])
+        print(f"   {bad['experimento']}_r{bad['repeticion']} descartada; se repite ahora.")
+        return bad
+
+    def confirm_last_run(self, step):
+        """Antes de calibrar, la última corrida solo se puede juzgar aquí (N6-1).
+
+        Las demás se juzgan en la pregunta de la corrida siguiente, pero entre la
+        última y la calibración no hay otra pregunta. Devuelve False si el operador
+        termina la sesión.
+        """
+        while self.last_item is not None and not self.args.auto:
+            last, rep = self.last_item
+            answer = input(f"\n¿{last['name']}_r{rep} salió bien? La calibración {step.get('name', 'CAL')} va a usar "
+                           "las corridas hechas hasta ahora.\n[Enter] sí · [x] repetirla · [q] terminar: ")
+            answer = answer.strip().lower()
+            if answer in ("", "q"):
+                return answer == ""
+            if answer != "x":
+                print("   No entendí la respuesta.")
+                continue
+            self.discard_last()
+            result = "redo"
+            while result == "redo":
+                result = self.run_experiment(last, rep)
+            if result == "quit":
+                return False
+            self.last_item = (last, rep) if result == "ok" else None
+        return True
 
     def finish(self):
         try:

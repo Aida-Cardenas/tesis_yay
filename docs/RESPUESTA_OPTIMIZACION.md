@@ -15,7 +15,7 @@ Cambios del 26 de octubre de 2026, hechos antes de cargar el firmware y de tomar
   - Las dos ruedas comparten el mismo código (`struct Wheel`): el cambio de sentido, el modo del PID y la lectura del encoder ya no están escritos dos veces.
 - **Interfaz (`serial_protocol.cpp`, `bumperbot_interface.cpp`).**
   - La posición de cada rueda sale del contador, así que es exacta en cada lectura aunque se pierdan líneas. El contador de 16 bits da la vuelta y se usan diferencias, válidas aunque pase de 65535 a 0.
-  - Entre lecturas la posición avanza con la última velocidad (para que `diff_drive_controller` vea un movimiento suave), y la lectura siguiente la devuelve al valor exacto. *Revisión 5: suave solo a velocidad constante; al frenar daba pasos hacia atrás. Ahora usa también la tendencia de la velocidad (HW-3).*
+  - Entre lecturas la posición avanza con la última velocidad (para que `diff_drive_controller` vea un movimiento suave), y la lectura siguiente la devuelve al valor exacto. *Revisión 5: suave solo a velocidad constante; al frenar daba pasos hacia atrás. Ahora usa también la tendencia de la velocidad, que solo puede bajarla hacia cero (HW-3 y HW-6).*
   - Las cuentas por vuelta son el parámetro `encoder_counts_per_rev` del URDF (770).
   - Si llegan líneas sin contadores, el aviso dice que el sketch cargado es viejo.
 

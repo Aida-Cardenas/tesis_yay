@@ -137,3 +137,37 @@ def test_resume_refuses_an_edited_protocol(tmp_path):
     edited = [dict(steps[0], repetitions=3)]
     with pytest.raises(ValueError, match="cambiaron"):
         Runner(args, {"name": "p"}, edited)
+
+
+def test_the_last_run_before_calibration_can_be_redone(tmp_path, monkeypatch):
+    import types
+    import bumperbot_digital_twin.experiment_runner as er
+    monkeypatch.setattr(er.time, "sleep", lambda s: None)
+    r = make_runner(tmp_path)
+    r.args.auto = False
+    logs = iter(str(tmp_path / f"E5_{i}.csv") for i in range(3))
+
+    def configure(**kw):
+        r.calls.append(kw)
+        path = r.current if kw.get("close_log") else next(logs)
+        r.current = path
+        open(path, "w").close()
+        return types.SimpleNamespace(log_path=path, message="ok", clock_offset_ms=0.0, rtt_ms=10.0)
+
+    r.configure = configure
+    r.player = types.SimpleNamespace(play=lambda *a: 5.0, stop=lambda: None)
+    step = {"name": "E5", "description": "", "leader": "real", "feedback": True, "compensation": False,
+            "twin_model": False, "net_delay_ms": 0.0, "net_jitter_ms": 0.0, "net_loss": 0.0,
+            "pattern": "rotate", "linear_speed": 0.15, "angular_speed": 0.6, "distance": 1.0, "radius": 0.5,
+            "laps": 1, "pause": 0.5, "settle": 2.0}
+    answers = iter(["", "x", "", ""])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    assert r.run_experiment(step, 3) == "ok"
+    r.last_item = (step, 3)
+    assert r.confirm_last_run({"name": "CAL"})
+    runs = r.session.data["corridas"]
+    assert [run["valida"] for run in runs] == [False, True]
+    assert r.logs == {"E5": [str(tmp_path / "E5_1.csv")]}
+    r.last_item = (step, 3)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "q")
+    assert not r.confirm_last_run({"name": "CAL"})

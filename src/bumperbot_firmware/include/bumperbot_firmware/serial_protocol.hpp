@@ -16,8 +16,9 @@ namespace bumperbot_firmware
 //          diferencias entre lecturas)
 //   t      millis() del Arduino en la medición: si retrocede, el Arduino se
 //          reinició y sus contadores volvieron a 0
-//   fr/fl  solo si esa rueda está detenida por falla: giraba al revés con el PWM
-//          casi al máximo (encoder o motor cableado al revés)
+//   fr/fl  solo tras una falla de esa rueda: giraba al revés con el PWM casi al
+//          máximo (encoder o motor al revés) o no giraba con el PWM al máximo
+//          (encoder suelto, rueda trabada). El Arduino detiene las dos ruedas.
 struct WheelSample
 {
   bool has_speed = false;
@@ -70,9 +71,10 @@ enum class ReadingResult
 // La posición sale de los contadores de los encoders, así que es exacta en cada
 // lectura aunque se pierdan líneas. El Arduino informa cada 100 ms y el lazo de
 // control corre más rápido: entre lecturas la posición avanza con la velocidad
-// prevista (la última medida más su tendencia, sin cruzar nunca el cero) y en la
-// lectura siguiente vuelve al valor exacto del contador. Con la tendencia, una
-// frenada no deja la posición por delante del contador, que al corregirse daría
+// prevista y en la lectura siguiente vuelve al valor exacto del contador. La
+// predicción es la última velocidad medida más su tendencia, pero la tendencia
+// solo puede bajarla hacia cero: al frenar sigue a la rueda, y al terminar de
+// acelerar no deja la posición por delante del contador, que al corregirse daría
 // un paso hacia atrás. Si pasa más de `timeout_s` sin una lectura completa
 // (Arduino reiniciado, cable suelto, solo basura), las velocidades pasan a cero y
 // la posición queda en la última exacta: sin datos, la odometría se detiene en
@@ -124,14 +126,17 @@ private:
 };
 
 // Qué hace write() con el Arduino según cuánto lleva sin una lectura completa
-// (`quiet_s`; antes de la primera, desde que se abrió el puerto):
+// (`quiet_s`; antes de la primera, desde que se abrió el puerto) y sin ninguna
+// línea, completa o no (`line_quiet_s`):
 //   kWait       todavía no respondió: nada, porque abrir el puerto lo reinicia y
 //               los bytes durante el bootloader pueden trabar un Nano viejo
 //   kSend       datos al día: la velocidad pedida
 //   kSendZero   más de `stale_s`: velocidad cero, el robot no sigue a ciegas
 //   kSilent     más de 1 s: nada (el sketch frena solo a los 0,5 s sin comandos)
 //               por si el Arduino se reinició y está en el bootloader
-//   kReconnect  más de 5 s: reabrir el puerto, que reinicia el Arduino
+//   kReconnect  más de 5 s sin ninguna línea: reabrir el puerto, que reinicia el
+//               Arduino. Si llegan líneas incompletas (un sketch viejo, sin `t`)
+//               el Arduino está vivo y reiniciarlo no sirve: queda en kSilent.
 enum class LinkAction
 {
   kWait,
@@ -140,7 +145,7 @@ enum class LinkAction
   kSilent,
   kReconnect,
 };
-LinkAction link_action(bool has_reading, double quiet_s, double stale_s = 0.3);
+LinkAction link_action(bool has_reading, double quiet_s, double line_quiet_s, double stale_s = 0.3);
 
 // Posición de cada rueda en la lista de articulaciones de ros2_control, buscando
 // por nombre: primero el nombre exacto y, si no está, cualquiera que contenga

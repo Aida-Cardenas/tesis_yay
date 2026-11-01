@@ -222,19 +222,24 @@ bool WheelIntegrator::advance(double now_s, double dt)
   {
     // Speed predicted at the middle of this step. The measured speed belongs to
     // the middle of the Arduino's last period, half a period before the reading.
+    // The trend may only take the speed down towards zero, never above the last
+    // measured speed or past zero: a prediction that falls short only delays the
+    // position until the next reading, while one that runs ahead (the trend
+    // carried past the end of an acceleration) is corrected backwards, and
+    // diff_drive_controller sees that as a reverse speed.
     const double age = now_s - last_reading_s_ - 0.5 * dt + 0.5 * report_period_s_;
     for (State * wheel : {&right_, &left_})
     {
-      const double predicted = wheel->velocity + wheel->accel * age;
-      wheel->position += predicted * wheel->velocity > 0.0 ? predicted * dt : 0.0;
+      const double v = wheel->velocity;
+      wheel->position += std::clamp(v + wheel->accel * age, std::min(0.0, v), std::max(0.0, v)) * dt;
     }
   }
   return false;
 }
 
-LinkAction link_action(bool has_reading, double quiet_s, double stale_s)
+LinkAction link_action(bool has_reading, double quiet_s, double line_quiet_s, double stale_s)
 {
-  if (quiet_s > 5.0)
+  if (line_quiet_s > 5.0)
   {
     return LinkAction::kReconnect;
   }
