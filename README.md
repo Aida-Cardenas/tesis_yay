@@ -35,7 +35,8 @@ tesis-gemelo-digital-wmr/          <- esta carpeta ES el workspace (colcon build
 ├── docs/RESPUESTA_REVISION_3.md  ídem para la tercera revisión
 ├── docs/RESPUESTA_REVISION_4.md  ídem para la cuarta revisión
 ├── docs/REVISION_GENERAL.md     revisión de errores y seguridad antes de cargar el código en el robot
-└── docs/RESPUESTA_OPTIMIZACION.md  optimizaciones posteriores (odometría con contadores, sintonización)
+├── docs/RESPUESTA_OPTIMIZACION.md  optimizaciones posteriores (odometría con contadores, sintonización)
+└── docs/RESPUESTA_REVISION_5.md  ídem para la quinta revisión
 ```
 
 ## Requisitos
@@ -151,26 +152,31 @@ Luego se usa con `map_name:=mi_mapa`.
    chronyc sources      # en la Raspberry Pi: la IP del PC debe aparecer con ^*
    chronyc tracking     # "System time" debe ser de pocos milisegundos
    ```
-   Al empezar, `twin_experiment` mide la diferencia de relojes con el robot: avisa si supera 10 ms y no arranca si supera 50 ms.
+   En la Pi, el PC es la única fuente de hora (`/etc/chrony/conf.d/bumperbot.conf`); si cambia la IP del PC, se vuelve a correr `./install_dependencies.sh robot <IP del PC>`. Si el PC tiene `ufw` activo, hay que abrir el puerto de la hora: `sudo ufw allow 123/udp`.
+
+   Al empezar, `twin_experiment` mide la diferencia de relojes con el robot sin red emulada: avisa si supera 10 ms y no arranca si supera 50 ms. Esa medida (que el puente sigue afinando solo mientras no hay red emulada, porque la cola de la emulación la sesgaría) se guarda en cada corrida y el análisis corrige con ella el error real.
 4. **Lanzar** en la Raspberry Pi:
    ```bash
    ros2 launch bumperbot_bringup real_robot.launch.py use_slam:=true
    ```
    Sin udev, se puede indicar el puerto a mano: `arduino_port:=/dev/ttyUSB0`. El monitor serie del Arduino IDE tiene que estar cerrado: dos programas no pueden usar el puerto a la vez.
 
-   Al arrancar es normal ver "Waiting for the first data from the Arduino" durante uno o dos segundos (abrir el puerto reinicia el Arduino). Si después aparece "No data from the Arduino", revisar el cable, que el sketch esté cargado y los 115200 baudios. Si el LiDAR no está conectado, su nodo se reinicia cada 3 s hasta que aparezca `/dev/rplidar`; el resto del robot sigue funcionando.
-5. **Comprobar el sentido de giro, antes de cualquier otra prueba.** Si el robot estaba cableado para el sketch "invertido" del curso, con el sketch actual puede andar hacia atrás mientras la odometría de las ruedas parece correcta (los encoders se invierten junto con los motores). Solo la IMU y el LiDAR lo delatan.
-   1. *Hacia adelante, sin ROS.* Con `real_robot.launch.py` cerrado, abrir el monitor serie del Arduino IDE a 115200 baudios y enviar `rp03.00,lp03.00,` varias veces seguidas (el Arduino frena las ruedas si pasa medio segundo sin comandos). El robot debe avanzar hacia su frente y las respuestas deben empezar con `rp` y traer `lp` (signo positivo en ambas ruedas), y los contadores `rc` y `lc` del final de cada línea deben ir aumentando. Si una rueda gira hacia atrás, se invierten los dos cables de ese motor en el L298N; si gira hacia adelante pero responde con `n`, se intercambian las fases A y B de su encoder.
-   2. *Giro, con ROS.* Lanzar `real_robot.launch.py` y en otra terminal:
+   Al arrancar es normal ver "Waiting for the first data from the Arduino" durante uno o dos segundos (abrir el puerto reinicia el Arduino). Si después aparece "No data from the Arduino", revisar el cable, que el sketch esté cargado y los 115200 baudios. Con 5 s sin datos la Pi reabre el puerto (lo que reinicia el Arduino), y si el Arduino se reinicia solo (batería baja, botón de reset) aparece "The Arduino restarted": la odometría no salta. Si el LiDAR no está conectado, su nodo se reinicia cada 3 s hasta que aparezca `/dev/rplidar`; el resto del robot sigue funcionando.
+5. **Comprobar el sentido de giro, antes de cualquier otra prueba, con las ruedas en el aire** (el robot sobre una caja o un soporte). Si el robot estaba cableado para el sketch "invertido" del curso, con el sketch actual puede andar hacia atrás mientras la odometría de las ruedas parece correcta (los encoders se invierten junto con los motores). Solo la IMU y el LiDAR lo delatan.
+
+   > **Cuidado.** Un encoder que cuenta al revés respecto de su motor hace que el PID empuje cada vez más: la rueda se va al PWM máximo, no a la velocidad pedida. El sketch la detiene si sigue girando al revés contra casi todo el PWM durante 0,3 s, y desde ahí cada línea termina en `fr,` o `fl,` hasta reiniciar el Arduino. Aun así, si una rueda se acelera de golpe, dejar de enviar comandos (o cerrar el monitor serie) y no volver a probar en el piso hasta corregir el cableado.
+
+   1. *Hacia adelante, sin ROS.* Con `real_robot.launch.py` cerrado, abrir el monitor serie del Arduino IDE a 115200 baudios y enviar `rp03.00,lp03.00,` varias veces seguidas (el Arduino frena las ruedas si pasa medio segundo sin comandos). Las dos ruedas deben girar hacia el frente del robot, a una velocidad moderada; las respuestas deben empezar con `rp` y traer `lp` (signo positivo en ambas ruedas), los contadores `rc` y `lc` deben ir aumentando y el `t` del final crece 100 por línea. Si una rueda gira hacia atrás, se invierten los dos cables de ese motor en el L298N. Si una rueda se dispara y la línea termina en `fr,` o `fl,` (o gira hacia adelante pero responde con `n`), se intercambian las fases A y B de su encoder; después, reiniciar el Arduino (botón de reset) y repetir.
+   2. *Giro, con ROS.* Todavía con las ruedas en el aire, lanzar `real_robot.launch.py` y en otra terminal:
       ```bash
       ros2 topic pub -r 10 /key_vel geometry_msgs/msg/Twist "{angular: {z: 0.5}}"
       ```
-      Visto desde arriba, el robot debe girar en sentido **antihorario**. Mientras gira, en otras dos terminales:
+      Mientras giran, en otras dos terminales:
       ```bash
       ros2 topic echo /bumperbot_controller/odom --field twist.twist.angular.z
       ros2 topic echo /imu/out --field angular_velocity.z
       ```
-      Los dos deben ser **positivos** y parecidos (unos 0,5 rad/s), y el rumbo de la odometría debe ir aumentando. Si el robot gira en sentido horario, o la IMU da negativo mientras la odometría da positivo, hay que corregir el cableado (paso anterior) antes de seguir.
+      Con las ruedas en el aire, la rueda derecha debe girar hacia adelante y la izquierda hacia atrás, y `twist.twist.angular.z` de la odometría debe ser **positivo** (unos 0,5 rad/s). Después, con el robot en el piso, repetir: visto desde arriba debe girar en sentido **antihorario**, la odometría y la IMU deben ser **positivas** y parecidas, y el rumbo de la odometría debe ir aumentando. Si el robot gira en sentido horario, o la IMU da negativo mientras la odometría da positivo, hay que corregir el cableado (paso anterior) antes de seguir. Si la Pi muestra "The Arduino stopped the ... wheel", es el caso del aviso de arriba.
 6. **Visualizar** desde la laptop (misma red y mismo `ROS_DOMAIN_ID` en ambas máquinas):
    ```bash
    ros2 run rviz2 rviz2 -d /opt/ros/humble/share/nav2_bringup/rviz/nav2_default_view.rviz

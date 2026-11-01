@@ -1,25 +1,40 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cmath>
 #include <string>
+#include <vector>
 
 #include "bumperbot_firmware/serial_protocol.hpp"
 
 using bumperbot_firmware::find_wheel_index;
 using bumperbot_firmware::format_wheel_command;
+using bumperbot_firmware::link_action;
+using bumperbot_firmware::LinkAction;
 using bumperbot_firmware::parse_wheel_message;
+using bumperbot_firmware::ReadingResult;
 using bumperbot_firmware::take_last_line;
 using bumperbot_firmware::WheelIntegrator;
 
 namespace
 {
-// A line as the sketch sends it: speeds in rad/s and the encoder counters
-std::string line(double right, double left, unsigned right_count, unsigned left_count)
+// A line as the sketch sends it: speeds in rad/s, the encoder counters and the
+// Arduino's millis(). By default the Arduino's clock is the PC's.
+std::string line(double right, double left, unsigned right_count, unsigned left_count, double now_s,
+                 long arduino_ms = -1)
 {
   auto speed = [](char wheel, double v) {
     return std::string(1, wheel) + (v < 0 ? "n" : "p") + std::to_string(std::abs(v));
   };
+  const long ms = arduino_ms >= 0 ? arduino_ms : std::lround(now_s * 1000.0);
   return speed('r', right) + "," + speed('l', left) + ",rc" + std::to_string(right_count) +
-         ",lc" + std::to_string(left_count) + ",";
+         ",lc" + std::to_string(left_count) + ",t" + std::to_string(ms) + ",";
+}
+
+// Feeds a reading taken at now_s
+ReadingResult feed(WheelIntegrator & w, double now_s, double right, double left, unsigned right_count,
+                   unsigned left_count, long arduino_ms = -1)
+{
+  return w.on_reading(now_s, parse_wheel_message(line(right, left, right_count, left_count, now_s, arduino_ms)));
 }
 
 // 0.01 rad per count keeps the expected positions easy to read
@@ -28,8 +43,10 @@ constexpr double kRadPerCount = 0.01;
 
 TEST(SerialProtocol, ParsesBothWheels)
 {
-  auto r = parse_wheel_message("rp4.55,ln03.10,rc100,lc65535,");
+  auto r = parse_wheel_message("rp4.55,ln03.10,rc100,lc65535,t4294967295,");
   EXPECT_TRUE(r.complete());
+  EXPECT_EQ(r.time_ms, 4294967295u);
+  EXPECT_FALSE(r.right_fault || r.left_fault);
   EXPECT_DOUBLE_EQ(r.right.speed, 4.55);
   EXPECT_DOUBLE_EQ(r.left.speed, -3.1);
   EXPECT_EQ(r.right.count, 100);
@@ -39,7 +56,7 @@ TEST(SerialProtocol, ParsesBothWheels)
 
 TEST(SerialProtocol, IgnoresLineEndingsAndOrder)
 {
-  auto r = parse_wheel_message("lc5,ln12.50,rc7,rp00.00,\r\n");
+  auto r = parse_wheel_message("lc5,t0,ln12.50,rc7,rp00.00,\r\n");
   EXPECT_TRUE(r.complete());
   EXPECT_DOUBLE_EQ(r.left.speed, -12.5);
   EXPECT_DOUBLE_EQ(r.right.speed, 0.0);
@@ -77,6 +94,22 @@ TEST(SerialProtocol, CountsMustBePlainIntegersUpTo65535)
   EXPECT_EQ(parse_wheel_message("rc0,").right.count, 0);
 }
 
+TEST(SerialProtocol, TimeAndFaultsAreParsed)
+{
+  auto r = parse_wheel_message("rp0.00,lp0.00,rc1,lc2,t123,fr,fl,");
+  EXPECT_TRUE(r.complete());
+  EXPECT_EQ(r.time_ms, 123u);
+  EXPECT_TRUE(r.right_fault);
+  EXPECT_TRUE(r.left_fault);
+  EXPECT_FALSE(parse_wheel_message("rp0.00,lp0.00,rc1,lc2,").complete());
+  for (const std::string bad : {"t,", "t-1,", "t4294967296,", "t1.5,", "tx,"})
+  {
+    auto bad_time = parse_wheel_message(bad);
+    EXPECT_FALSE(bad_time.has_time) << bad;
+    EXPECT_EQ(bad_time.rejected, 1) << bad;
+  }
+}
+
 TEST(SerialProtocol, FormatsCommandsLikeTheFirmwareExpects)
 {
   EXPECT_EQ(format_wheel_command(5.2, -3.1), "rp05.20,ln03.10,");
@@ -95,6 +128,13 @@ TEST(SerialProtocol, CommandIsAlwaysReadableByTheSketch)
   EXPECT_EQ(format_wheel_command(std::nan(""), 1.0), "rp00.00,lp01.00,");
   EXPECT_EQ(format_wheel_command(INFINITY, -INFINITY), "rp00.00,lp00.00,");
   EXPECT_EQ(format_wheel_command(150.0, -150.0), "rp99.99,ln99.99,");
+}
+
+TEST(SerialProtocol, CommandIsRoundedBeforeTheSignAndPadding)
+{
+  EXPECT_EQ(format_wheel_command(9.996, -9.996), "rp10.00,ln10.00,");
+  EXPECT_EQ(format_wheel_command(9.994, -0.004), "rp09.99,lp00.00,");
+  EXPECT_EQ(format_wheel_command(-0.006, 99.996), "rn00.01,lp99.99,");
 }
 
 TEST(SerialProtocol, WheelsAreFoundByNameNotByPosition)
@@ -148,9 +188,9 @@ TEST(SerialProtocol, TakeLastLineDropsGarbageWithoutNewline)
 TEST(WheelIntegrator, PositionComesFromTheCounters)
 {
   WheelIntegrator w(0.3, kRadPerCount);
-  w.on_reading(0.0, parse_wheel_message(line(1.0, -1.0, 1000, 1000)));
+  feed(w, 0.0, 1.0, -1.0, 1000, 1000);
   EXPECT_DOUBLE_EQ(w.right_position(), 0.0);
-  w.on_reading(0.1, parse_wheel_message(line(1.0, -1.0, 1100, 900)));
+  feed(w, 0.1, 1.0, -1.0, 1100, 900);
   EXPECT_NEAR(w.right_position(), 1.0, 1e-9);
   EXPECT_NEAR(w.left_position(), -1.0, 1e-9);
 }
@@ -158,7 +198,7 @@ TEST(WheelIntegrator, PositionComesFromTheCounters)
 TEST(WheelIntegrator, MovesWithTheLastSpeedBetweenReadingsAndSnapsBack)
 {
   WheelIntegrator w(0.3, kRadPerCount);
-  w.on_reading(0.0, parse_wheel_message(line(2.0, -1.0, 0, 0)));
+  feed(w, 0.0, 2.0, -1.0, 0, 0);
   double t = 0.0;
   for (int i = 0; i < 10; ++i)
   {
@@ -167,7 +207,7 @@ TEST(WheelIntegrator, MovesWithTheLastSpeedBetweenReadingsAndSnapsBack)
   }
   EXPECT_NEAR(w.right_position(), 0.2, 1e-9);
   EXPECT_NEAR(w.left_position(), -0.1, 1e-9);
-  w.on_reading(t, parse_wheel_message(line(2.0, -1.0, 19, 65526)));
+  feed(w, t, 2.0, -1.0, 19, 65526);
   EXPECT_NEAR(w.right_position(), 0.19, 1e-9);
   EXPECT_NEAR(w.left_position(), -0.10, 1e-9);
 }
@@ -175,16 +215,16 @@ TEST(WheelIntegrator, MovesWithTheLastSpeedBetweenReadingsAndSnapsBack)
 TEST(WheelIntegrator, LostLinesDoNotLoseDistance)
 {
   WheelIntegrator w(0.3, kRadPerCount);
-  w.on_reading(0.0, parse_wheel_message(line(1.0, 1.0, 0, 0)));
-  w.on_reading(0.2, parse_wheel_message(line(1.0, 1.0, 200, 200)));
+  feed(w, 0.0, 1.0, 1.0, 0, 0);
+  feed(w, 0.2, 1.0, 1.0, 200, 200);
   EXPECT_NEAR(w.right_position(), 2.0, 1e-9);
 }
 
 TEST(WheelIntegrator, CounterWrapsAround)
 {
   WheelIntegrator w(0.3, kRadPerCount);
-  w.on_reading(0.0, parse_wheel_message(line(1.0, -1.0, 65530, 10)));
-  w.on_reading(0.1, parse_wheel_message(line(1.0, -1.0, 10, 65530)));
+  feed(w, 0.0, 1.0, -1.0, 65530, 10);
+  feed(w, 0.1, 1.0, -1.0, 10, 65530);
   EXPECT_NEAR(w.right_position(), 0.16, 1e-9);
   EXPECT_NEAR(w.left_position(), -0.16, 1e-9);
 }
@@ -192,7 +232,7 @@ TEST(WheelIntegrator, CounterWrapsAround)
 TEST(WheelIntegrator, StopsWhenTheArduinoGoesQuiet)
 {
   WheelIntegrator w(0.3, kRadPerCount);
-  w.on_reading(0.0, parse_wheel_message(line(5.0, 5.0, 0, 0)));
+  feed(w, 0.0, 5.0, 5.0, 0, 0);
   double t = 0.0;
   bool stale = false;
   for (int i = 0; i < 150; ++i)
@@ -204,7 +244,7 @@ TEST(WheelIntegrator, StopsWhenTheArduinoGoesQuiet)
   EXPECT_DOUBLE_EQ(w.right_velocity(), 0.0);
   EXPECT_DOUBLE_EQ(w.left_velocity(), 0.0);
   EXPECT_DOUBLE_EQ(w.right_position(), 0.0);
-  w.on_reading(t, parse_wheel_message(line(1.0, 1.0, 150, 150)));
+  feed(w, t, 1.0, 1.0, 150, 150);
   EXPECT_FALSE(w.advance(t + 0.01, 0.01));
   EXPECT_DOUBLE_EQ(w.right_velocity(), 1.0);
   EXPECT_NEAR(w.right_position(), 1.51, 1e-9);
@@ -213,7 +253,7 @@ TEST(WheelIntegrator, StopsWhenTheArduinoGoesQuiet)
 TEST(WheelIntegrator, GarbageDoesNotKeepTheDataAlive)
 {
   WheelIntegrator w(0.3, kRadPerCount);
-  w.on_reading(0.0, parse_wheel_message(line(5.0, 5.0, 0, 0)));
+  feed(w, 0.0, 5.0, 5.0, 0, 0);
   for (int i = 1; i <= 100; ++i)
   {
     w.on_reading(i * 0.01, parse_wheel_message("xx,rq,"));
@@ -231,7 +271,7 @@ TEST(WheelIntegrator, NoMotionBeforeTheFirstReading)
 TEST(WheelIntegrator, IncompleteReadingsDoNotKeepTheDataAlive)
 {
   WheelIntegrator w(0.3, kRadPerCount);
-  w.on_reading(0.0, parse_wheel_message(line(5.0, 5.0, 0, 0)));
+  feed(w, 0.0, 5.0, 5.0, 0, 0);
   for (int i = 1; i <= 100; ++i)
   {
     w.on_reading(i * 0.01, parse_wheel_message("rp05.00,rc10,"));
@@ -245,8 +285,8 @@ TEST(WheelIntegrator, IncompleteReadingsDoNotKeepTheDataAlive)
 TEST(WheelIntegrator, ForgetReadingKeepsThePositionAndTakesANewReference)
 {
   WheelIntegrator w(0.3, kRadPerCount);
-  w.on_reading(0.0, parse_wheel_message(line(5.0, -2.0, 0, 0)));
-  w.on_reading(0.1, parse_wheel_message(line(5.0, -2.0, 50, 65516)));
+  feed(w, 0.0, 5.0, -2.0, 0, 0);
+  feed(w, 0.1, 5.0, -2.0, 50, 65516);
   w.advance(0.15, 0.05);
   w.forget_reading();
   EXPECT_FALSE(w.has_reading());
@@ -256,9 +296,108 @@ TEST(WheelIntegrator, ForgetReadingKeepsThePositionAndTakesANewReference)
   EXPECT_TRUE(w.advance(0.2, 0.1));
   EXPECT_NEAR(w.right_position(), 0.5, 1e-9);
   // The Arduino restarted: its counters begin again at 0
-  w.on_reading(0.3, parse_wheel_message(line(1.0, 1.0, 0, 0)));
+  feed(w, 0.3, 1.0, 1.0, 0, 0);
   EXPECT_NEAR(w.right_position(), 0.5, 1e-9);
-  w.on_reading(0.4, parse_wheel_message(line(1.0, 1.0, 10, 10)));
+  feed(w, 0.4, 1.0, 1.0, 10, 10);
   EXPECT_NEAR(w.right_position(), 0.6, 1e-9);
   EXPECT_NEAR(w.left_position(), -0.1, 1e-9);
+}
+
+TEST(WheelIntegrator, ArduinoRestartWithoutAPortErrorKeepsThePosition)
+{
+  // 300 readings forward, then a reset (brown-out, button): 1.5 s of silence and
+  // the counters and the clock start again from 0
+  WheelIntegrator w(0.3, kRadPerCount);
+  double t = 0.0;
+  for (unsigned i = 0; i <= 300; ++i)
+  {
+    t = 0.1 * i;
+    EXPECT_NE(feed(w, t, 5.0, 5.0, 50 * i, 50 * i), ReadingResult::kArduinoRestarted);
+  }
+  const double before = w.right_position();
+  EXPECT_NEAR(before, 150.0, 1e-6);
+  t += 1.5;
+  EXPECT_TRUE(w.advance(t, 0.01));
+  EXPECT_EQ(feed(w, t, 0.0, 0.0, 0, 0, 100), ReadingResult::kArduinoRestarted);
+  EXPECT_NEAR(w.right_position(), before, 1e-9);
+  EXPECT_NEAR(w.left_position(), before, 1e-9);
+  EXPECT_EQ(feed(w, t + 0.1, 1.0, 1.0, 10, 10, 200), ReadingResult::kAccepted);
+  EXPECT_NEAR(w.right_position(), before + 0.1, 1e-9);
+  // A small net travel before the reset is not taken as motion either
+  WheelIntegrator small(0.3, kRadPerCount);
+  feed(small, 0.0, 0.0, 0.0, 1000, 1000, 5000);
+  feed(small, 0.1, 1.0, 1.0, 1020, 1020, 5100);
+  EXPECT_EQ(feed(small, 1.0, 0.0, 0.0, 3, 3, 120), ReadingResult::kArduinoRestarted);
+  EXPECT_NEAR(small.right_position(), 0.2, 1e-9);
+}
+
+TEST(WheelIntegrator, BrakingDoesNotShowAReverseSpeed)
+{
+  // Braking at a constant 20 rad/s^2. diff_drive_controller takes the speed from
+  // the position over its last 10 cycles (100 ms): it must never be negative
+  // while the wheel slows down, and the position stays close to the real one.
+  WheelIntegrator w(0.3, 0.001);
+  auto travel = [](double t) {
+      const double braking = std::min(std::max(0.0, t - 0.3), 0.75);
+      return 15.0 * std::min(t, 0.3) + 15.0 * braking - 10.0 * braking * braking;
+    };
+  std::vector<double> shown;
+  for (int step = 1; step <= 150; ++step)
+  {
+    const double t = 0.01 * step;
+    if (step % 10 == 0)
+    {
+      const double average = (travel(t) - travel(t - 0.1)) / 0.1;
+      const auto counts = static_cast<unsigned>(std::lround(travel(t) / 0.001));
+      feed(w, t, average, 0.0, counts, 0);
+    }
+    else
+    {
+      w.advance(t, 0.01);
+    }
+    shown.push_back(w.right_position());
+    if (step >= 20)
+    {
+      EXPECT_GE(shown[step - 1] - shown[step - 11], -1e-9) << "t = " << t;
+      EXPECT_NEAR(w.right_position(), travel(t) - travel(0.1), 0.12) << "t = " << t;
+    }
+  }
+}
+
+TEST(WheelIntegrator, PredictionNeverReversesTheWheel)
+{
+  WheelIntegrator w(0.3, kRadPerCount);
+  feed(w, 0.0, 15.0, -15.0, 0, 0);
+  feed(w, 0.1, 1.0, -1.0, 10, 65526);
+  const double right = w.right_position();
+  const double left = w.left_position();
+  for (int i = 1; i <= 20; ++i)
+  {
+    w.advance(0.1 + 0.01 * i, 0.01);
+    EXPECT_GE(w.right_position(), right);
+    EXPECT_LE(w.left_position(), left);
+  }
+}
+
+TEST(WheelIntegrator, TrendIsNotTrustedAfterLostLines)
+{
+  WheelIntegrator w(0.3, kRadPerCount);
+  feed(w, 0.0, 0.0, 0.0, 0, 0);
+  feed(w, 0.3, 3.0, 3.0, 30, 30);
+  w.advance(0.31, 0.01);
+  EXPECT_NEAR(w.right_position(), 0.33, 1e-9);
+}
+
+TEST(ArduinoLink, WriteFollowsHowLongTheArduinoHasBeenQuiet)
+{
+  EXPECT_EQ(link_action(false, 0.0), LinkAction::kWait);
+  EXPECT_EQ(link_action(false, 4.9), LinkAction::kWait);
+  EXPECT_EQ(link_action(false, 5.1), LinkAction::kReconnect);
+  EXPECT_EQ(link_action(true, 0.05), LinkAction::kSend);
+  EXPECT_EQ(link_action(true, 0.3), LinkAction::kSend);
+  EXPECT_EQ(link_action(true, 0.31), LinkAction::kSendZero);
+  EXPECT_EQ(link_action(true, 1.0), LinkAction::kSendZero);
+  EXPECT_EQ(link_action(true, 1.01), LinkAction::kSilent);
+  EXPECT_EQ(link_action(true, 5.0), LinkAction::kSilent);
+  EXPECT_EQ(link_action(true, 5.01), LinkAction::kReconnect);
 }

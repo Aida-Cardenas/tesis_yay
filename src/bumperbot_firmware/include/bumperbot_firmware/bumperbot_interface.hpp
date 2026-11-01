@@ -46,6 +46,7 @@ private:
   bool waiting_reported_ = false;
   bool stop_sent_reported_ = false;
   bool port_failed_ = false;
+  LinkAction link_ = LinkAction::kWait;
   double activated_at_ = 0.0;
   double last_reconnect_try_ = 0.0;
   bool tryReconnect(double now);

@@ -1,9 +1,12 @@
 #include <PID_v1.h>
 
 // Serial protocol at 115200 baud, one line every 100 ms:
-//   to the PC   "rp4.55,ln0.12,rc1234,lc65000,"
+//   to the PC   "rp4.55,ln0.12,rc1234,lc65000,t81230,"
 //               r/l wheel, p/n sign and speed in rad/s, then rc/lc the wheel's
 //               encoder counter (0-65535, wraps around; the PC uses differences)
+//               and t the millis() of the measurement (it goes back to 0 when
+//               the Arduino restarts, so the PC knows the counters did too).
+//               "fr," / "fl," at the end: that wheel is stopped by a fault.
 //   from the PC "rp05.20,ln03.10," wheel, sign and speed setpoint in rad/s
 
 // Encoder resolution: both edges of phase A are counted, so this is twice the
@@ -15,6 +18,12 @@ const double rad_per_count = 2.0 * PI / counts_per_rev;
 // unplugged, launch closed: both wheels stop).
 const unsigned long interval = 100;
 const unsigned long command_timeout = 500;
+
+// Wrong-way fault: PWM above fault_pwm while the wheel turns backwards faster than
+// fault_speed (rad/s) for fault_cycles control periods in a row.
+const double fault_pwm = 200.0;
+const double fault_speed = 1.0;
+const uint8_t fault_cycles = 3;
 
 struct Wheel {
   uint8_t en, in1, in2;      // L298N: PWM and direction pins
@@ -28,10 +37,12 @@ struct Wheel {
   double setpoint;           // rad/s, magnitude
   double measured;           // rad/s, positive in the commanded direction
   double output;             // PWM 0-255
+  uint8_t wrong_way;         // control periods in a row turning against full PWM
+  bool fault;                // stopped until the Arduino is reset
 };
 
-Wheel right = {9, 12, 13, 3, 5, +1, 'r', 0, 0, true, false, 0.0, 0.0, 0.0};
-Wheel left = {11, 7, 8, 2, 4, -1, 'l', 0, 0, true, false, 0.0, 0.0, 0.0};
+Wheel right = {9, 12, 13, 3, 5, +1, 'r', 0, 0, true, false, 0.0, 0.0, 0.0, 0, false};
+Wheel left = {11, 7, 8, 2, 4, -1, 'l', 0, 0, true, false, 0.0, 0.0, 0.0, 0, false};
 
 // Gains per second; see setup() for the sample time
 PID rightPid(&right.measured, &right.output, &right.setpoint, 11.5, 7.5, 0.1, DIRECT);
@@ -47,6 +58,7 @@ unsigned long last_cmd_millis = 0;
 void setDirection(Wheel &w, bool forward);
 void updateMode(PID &pid, Wheel &w);
 void measure(Wheel &w, double signed_speed);
+void checkFault(Wheel &w);
 void report(const Wheel &w, int16_t delta, double elapsed_s);
 void readSerial();
 
@@ -120,6 +132,8 @@ void loop() {
   updateMode(leftPid, left);
   rightPid.Compute();
   leftPid.Compute();
+  checkFault(right);
+  checkFault(left);
 
   report(right, right_delta, elapsed_s);
   Serial.print(',');
@@ -128,7 +142,16 @@ void loop() {
   Serial.print(right_count);
   Serial.print(",lc");
   Serial.print(left_count);
-  Serial.println(',');
+  Serial.print(",t");
+  Serial.print(current_millis);
+  Serial.print(',');
+  if (right.fault) {
+    Serial.print("fr,");
+  }
+  if (left.fault) {
+    Serial.print("fl,");
+  }
+  Serial.println();
 
   analogWrite(right.en, (int)right.output);
   analogWrite(left.en, (int)left.output);
@@ -139,6 +162,21 @@ void loop() {
 // already moving.
 void measure(Wheel &w, double signed_speed) {
   w.measured = w.forward ? signed_speed : -signed_speed;
+}
+
+// With an encoder that counts the wrong way for its motor, the measured speed is
+// negative while the wheel moves forward, and the PID pushes harder: full PWM for
+// as long as commands arrive. A wheel that keeps turning backwards against almost
+// full PWM is stopped here, and stays stopped until the Arduino is reset (after
+// fixing the wiring); every line reports it.
+void checkFault(Wheel &w) {
+  if (!w.fault) {
+    w.wrong_way = (w.output > fault_pwm && w.measured < -fault_speed) ? w.wrong_way + 1 : 0;
+    w.fault = w.wrong_way >= fault_cycles;
+  }
+  if (w.fault) {
+    w.output = 0.0;
+  }
 }
 
 void report(const Wheel &w, int16_t delta, double elapsed_s) {
@@ -189,13 +227,13 @@ void setDirection(Wheel &w, bool forward) {
   w.flip_hold = true;
 }
 
-// A zero setpoint (from ROS or from the watchdog) or a change of direction puts
-// the PID in MANUAL with the PWM at 0. With the wheel stopped the error is 0 - 0,
+// A zero setpoint (from ROS or from the watchdog), a change of direction or a
+// fault puts the PID in MANUAL with the PWM at 0. With the wheel stopped the error is 0 - 0,
 // so in AUTOMATIC the integral would keep the last speed's value and the next
 // start would begin at the old PWM. Going back to AUTOMATIC re-initialises the
 // PID from the current output, which is 0.
 void updateMode(PID &pid, Wheel &w) {
-  if (w.setpoint == 0.0 || w.flip_hold) {
+  if (w.setpoint == 0.0 || w.flip_hold || w.fault) {
     pid.SetMode(MANUAL);
     w.output = 0.0;
     w.flip_hold = false;
