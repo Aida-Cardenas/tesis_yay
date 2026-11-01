@@ -55,6 +55,7 @@ from std_srvs.srv import SetBool, Trigger
 
 from bumperbot_msgs.msg import ScanComparison, TwinAnomaly, TwinSyncStatus
 from bumperbot_msgs.srv import TwinConfigure
+from bumperbot_digital_twin.analyze_log import json_safe
 from bumperbot_digital_twin.anomaly import DESCRIPTIONS, SEVERITY, Hysteresis
 from bumperbot_digital_twin.dynamics import FirstOrderFilter, TwinModel
 from bumperbot_digital_twin.geometry import (
@@ -88,7 +89,7 @@ CSV_COLUMNS = [
     "ff_v", "ff_w", "cmd_v", "cmd_w",
     "rtt_ms", "one_way_ms", "real_odom_age_ms", "leader_cmd_age_ms",
     "anomalies", "sync", "kx", "ky", "ktheta",
-    "twin_rx", "rtt_ema_ms", "clock_offset_ms", "twin_clock",
+    "twin_rx", "rtt_ema_ms", "clock_offset_ms", "twin_clock", "smith_model",
 ]
 SCAN_COLUMNS = ["t", "common", "mae", "rmse", "bias", "p95",
                 "coverage_real", "coverage_twin", "visibility_agreement", "pos_error"]
@@ -290,6 +291,7 @@ class TwinBridge:
         self.last_active = -1e9
         self.tick_count = 0
         self.sent_to_real = deque(maxlen=200)
+        self.smith_model_used = NAN
         self.active_anomalies = {}
         self.comm_conditions = {"latencia_alta": Hysteresis(1.0, 1.0), "perdida_datos": Hysteresis(0.5, 0.5)}
         self.last_scan_cmp = 0.0
@@ -357,6 +359,18 @@ class TwinBridge:
         self.p["net_delay_ms"], self.p["net_jitter_ms"], self.p["net_loss"] = delay_ms, jitter_ms, loss
         self.net_in.configure(delay_ms, jitter_ms, loss)
         self.net_out.configure(delay_ms, jitter_ms, loss)
+
+    def _set_network(self, delay_ms, jitter_ms, loss):
+        """Cambia la red emulada solo si cambió; entonces la latencia medida ya no vale."""
+        values = [float(v) for v in (delay_ms, jitter_ms, loss)]
+        if values == [self.p["net_delay_ms"], self.p["net_jitter_ms"], self.p["net_loss"]]:
+            return False
+        self._configure_network(*values)
+        self._reset_rtt()
+        return True
+
+    def _network_emulated(self):
+        return self.p["net_delay_ms"] > 0.0 or self.p["net_jitter_ms"] > 0.0
 
     def _load_twin_model(self, path):
         path = os.path.expanduser(path or "")
@@ -456,7 +470,7 @@ class TwinBridge:
                              "ktheta": self.p["ktheta"], "rtt_ema_ms": self.rtt_ema_ms,
                              "clock_offset_ms": self.clock_offset_ms},
                     "twin_model": self.twin_model.to_dict() if self.twin_model else None}
-            json.dump(meta, f, indent=2, ensure_ascii=False)
+            json.dump(json_safe(meta), f, indent=2, ensure_ascii=False)
         self.main.get_logger().info(f"Registrando en {self.csv_path}")
 
     def _close_log(self):
@@ -502,19 +516,24 @@ class TwinBridge:
             self.rtt_ms = (time.monotonic() - sent_mono) * 1000.0
             self.rtt_ema_ms = (self.rtt_ms if not math.isfinite(self.rtt_ema_ms)
                                else 0.8 * self.rtt_ema_ms + 0.2 * self.rtt_ms)
-            if len(parts) > 1 and parts[1] == "t":
+            if len(parts) > 1 and parts[1] == "t" and not self._network_emulated():
                 # The echo writes its own clock into the stamp. Halfway through the
-                # round trip, the two clocks should read the same.
+                # round trip, the two clocks should read the same. With emulated
+                # delay the queue makes the two directions unequal and biases the
+                # estimate (N5-5), so only the real network is used: the clocks do
+                # not change with the emulation, and the last estimate is kept.
                 offset = (stamp_to_sec(msg.stamp) - (sent_wall + self.rtt_ms / 2000.0)) * 1000.0
                 self.clock_samples.append((self.rtt_ms, offset))
                 self.clock_offset_ms = min(self.clock_samples)[1]
 
     def _reset_rtt(self):
-        """Tras cambiar la red, los pongs en vuelo traen el retardo viejo: se descartan."""
+        """Tras cambiar la red, los pongs en vuelo traen el retardo viejo: se descartan.
+
+        La diferencia de relojes no se borra: no depende de la red emulada.
+        """
+        self.rtt_ms = NAN
         self.rtt_ema_ms = NAN
         self.ping_epoch = self.ping_seq
-        self.clock_samples.clear()
-        self.clock_offset_ms = NAN
 
     # ------------------------------------------------------------------ events
     def emit_event(self, source, kind, phase, severity, value, description):
@@ -662,8 +681,8 @@ class TwinBridge:
                 notes.append("ganancias=" + " ".join(f"{k}={v:.2f}" for k, v in gains.items()))
             if request.pause_sync and self.p["sync"]:
                 self.p["sync"] = False
-                for name, side in self.sides.items():
-                    self.send_to(name, side.follow_pub, Twist())
+                for name in self.sides:
+                    self._send_follow(name, Twist(), time.monotonic())
                 notes.append("sincronización en pausa")
             if request.resume_sync and not self.p["sync"]:
                 self.p["sync"] = True
@@ -675,12 +694,10 @@ class TwinBridge:
             if self.p["twin_model"] and self.twin_model is None:
                 notes.append("ADVERTENCIA: no hay twin_model_file cargado")
             net = [request.net_delay_ms, request.net_jitter_ms, request.net_loss]
-            if any(v >= 0 for v in net):
-                current = [self.p["net_delay_ms"], self.p["net_jitter_ms"], self.p["net_loss"]]
-                self._configure_network(*[n if n >= 0 else c for n, c in zip(net, current)])
+            current = [self.p["net_delay_ms"], self.p["net_jitter_ms"], self.p["net_loss"]]
+            if self._set_network(*[n if n >= 0 else c for n, c in zip(net, current)]):
                 notes.append(f"red={self.p['net_delay_ms']:.0f}ms±{self.p['net_jitter_ms']:.0f} "
                              f"pérdida={self.p['net_loss']:.2f}")
-                self._reset_rtt()
             if request.align:
                 ok = self.align()
                 notes.append("alineado" if ok else "sin alinear (falta odometría)")
@@ -712,8 +729,7 @@ class TwinBridge:
                 with self.lock:
                     values = {k: self.p[k] for k in ("net_delay_ms", "net_jitter_ms", "net_loss")}
                     values[prm.name] = float(prm.value)
-                    self._configure_network(values["net_delay_ms"], values["net_jitter_ms"], values["net_loss"])
-                    self._reset_rtt()
+                    self._set_network(values["net_delay_ms"], values["net_jitter_ms"], values["net_loss"])
             elif prm.name in RUNTIME_FLOATS:
                 with self.lock:
                     self.p[prm.name] = float(prm.value)
@@ -735,6 +751,12 @@ class TwinBridge:
     def tick(self):
         with self.lock:
             self._tick_locked()
+
+    def _send_follow(self, side, twist, now):
+        """Comando de seguimiento; los que van al robot real quedan para el predictor de Smith."""
+        self.send_to(side, self.sides[side].follow_pub, twist)
+        if side == "real":
+            self.sent_to_real.append((now, twist.linear.x, twist.angular.z))
 
     def _shape_for_twin(self, now, cmd):
         if not (self.p["twin_model"] and self.twin_filters):
@@ -763,6 +785,7 @@ class TwinBridge:
             cmd_age = (time.time() - L.cmd_stamp) * 1000.0
 
         ref = F_pose = None
+        self.smith_model_used = NAN
         err = err_raw = (NAN, NAN, NAN)
         ff = (0.0, 0.0)
         cmd = (0.0, 0.0)
@@ -776,8 +799,10 @@ class TwinBridge:
                 cmd_delay = tau if follower == "real" else 0.0
                 ref = integrate_unicycle(ref_raw, L.v, L.w, cmd_delay + (tau if leader == "real" else 0.0))
                 if follower == "real":
-                    F_pose = smith_predict(F_raw, self.sent_to_real, now, tau, tau,
+                    # The pose left the robot tau ago and has waited here since it arrived
+                    F_pose = smith_predict(F_raw, self.sent_to_real, now, tau + (now - F.odom_rx), tau,
                                            model=self.twin_model, v0=F.v, w0=F.w)
+                    self.smith_model_used = float(self.twin_model is not None)
                 if not math.isfinite(self.rtt_ema_ms) and not self.warned_comp_without_rtt:
                     self.main.get_logger().warn(
                         "Compensación activa sin latencia medida (¿corre latency_echo en el robot?): "
@@ -812,16 +837,14 @@ class TwinBridge:
                 t = Twist()
                 t.linear.x = float(clamp(cmd[0], 10.0))
                 t.angular.z = float(clamp(cmd[1], 10.0))
-                self.send_to(follower, self.sides[follower].follow_pub, t)
-                if follower == "real":
-                    self.sent_to_real.append((now, t.linear.x, t.angular.z))
+                self._send_follow(follower, t, now)
             else:
                 cmd = (0.0, 0.0)
                 if self.twin_filters:
                     for f in self.twin_filters:
                         f.reset()
         elif stale and self.p["sync"] and now - self.last_active < 1.0:
-            self.send_to(follower, self.sides[follower].follow_pub, Twist())
+            self._send_follow(follower, Twist(), now)
 
         self._check_comm_anomalies(now, stale)
 
@@ -887,6 +910,7 @@ class TwinBridge:
             status.anomalies, int(self.p["sync"]), self.p["kx"], self.p["ky"], self.p["ktheta"],
             twin.odom_rx_wall if twin.odom_rx_wall is not None else NAN, self.rtt_ema_ms,
             self.clock_offset_ms, self.sides["twin"].node.get_clock().now().nanoseconds * 1e-9,
+            self.smith_model_used,
         ]
         self.csv_writer.writerow([f"{x:.5f}" if isinstance(x, float) else x for x in row])
         if self.tick_count % 20 == 0:

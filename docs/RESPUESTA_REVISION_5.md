@@ -1,0 +1,53 @@
+# Respuesta a la quinta revisión de código
+
+Qué se hizo con cada punto de la quinta revisión (1 de noviembre de 2026, sobre `0e91290`). Las respuestas anteriores están en [`RESPUESTA_REVISION.md`](RESPUESTA_REVISION.md), [`RESPUESTA_REVISION_2.md`](RESPUESTA_REVISION_2.md), [`RESPUESTA_REVISION_3.md`](RESPUESTA_REVISION_3.md), [`RESPUESTA_REVISION_4.md`](RESPUESTA_REVISION_4.md) y [`RESPUESTA_OPTIMIZACION.md`](RESPUESTA_OPTIMIZACION.md). Los documentos anteriores que afirmaban algo que la revisión mostró falso tienen ahora una nota en el lugar (N5-11).
+
+**Resultado de CI:** pendiente.
+
+Todos los cambios respetan lo que pidieron las revisiones anteriores. Donde un punto toca uno anterior, la tabla dice cómo queda.
+
+## Medias
+
+| # | Observación | Estado | Cambio | Comprobación |
+|---|---|---|---|---|
+| HW-2 | Con un encoder al revés respecto de su motor, la realimentación con signo hace que el PID lleve la rueda al PWM máximo, y el paso 5 del README lo provoca con el robot en el piso | Corregido | **Sketch:** si una rueda sigue girando al revés (más de 1 rad/s) con más de 200 de PWM durante 3 periodos (0,3 s), se detiene, el PID queda en MANUAL y no vuelve a moverse hasta reiniciar el Arduino; cada línea termina en `fr,` o `fl,`. **Pi:** al ver esa marca muestra un error que dice qué cambiar. **README, paso 5:** se hace con las ruedas en el aire, con un aviso de lo que pasa con un encoder al revés y de cómo detenerlo; el giro se comprueba primero en el aire y después en el piso. La realimentación con signo (R4-M5) se mantiene: con el cableado correcto es la que deja al PID empujar más cuando la rueda todavía gira al revés | `TimeAndFaultsAreParsed` (gtest); el sketch compila en CI para Uno y Nano |
+| HW-1 | Un reinicio del Arduino sin error de puerto (batería baja, botón, ESD) hace saltar la posición de las ruedas | Corregido | **Sketch:** cada línea trae `t`, el `millis()` de la medición, que vuelve a 0 al reiniciarse. **Pi:** si `t` no avanza, el Arduino se reinició: la posición se conserva y los contadores nuevos son la referencia (aviso "The Arduino restarted"). Funciona con cualquier recorrido previo, también los cortos, que con una prueba de plausibilidad pasarían inadvertidos. **Escritura** (`link_action`): nada antes de la primera línea; los comandos con datos al día; cero entre 0,3 y 1 s sin datos (R4-L3); nada después de 1 s, por si el Arduino está en el bootloader (el sketch frena solo a los 0,5 s); a los 5 s sin datos, aunque no haya error de puerto, se reabre el puerto (R4-L4) | `ArduinoRestartWithoutAPortErrorKeepsThePosition`: 300 lecturas (150 rad), 1,5 s de silencio y `rc0,lc0`: la posición queda en 150 rad; con un recorrido de 20 cuentas, tampoco salta. `WriteFollowsHowLongTheArduinoHasBeenQuiet` |
+| N5-1 | La diferencia de relojes y el RTT por corrida quedan vacíos en `sesion.json` y en NaN en el JSON del registro | Corregido | El puente cambia la red emulada solo si los valores cambian (`_set_network`); antes cada corrida la "cambiaba" y borraba todo. La diferencia de relojes ya no se borra al cambiar la red (no depende de ella; ver N5-5). `_reset_rtt` borra también `rtt_ms`, así el CSV no arrastra el RTT de la corrida anterior. El JSON del registro pasa por `json_safe`. `twin_experiment` guarda la diferencia de relojes al empezar cada corrida y el RTT al terminarla, medido con la red de esa corrida. Con esto, el aviso de R4-L8 ya no salta al inicio de las corridas con la misma red | `test_bridge_configure.py`, contra `TwinBridge.srv_configure`: misma red → 30 ms y 10,1 ms en la respuesta; red nueva → RTT vacío, diferencia de relojes intacta. `test_each_run_closes_its_log_after_settling`; `test_twin_fake_integration` revisa `sesion.json` |
+| N5-2 | `--out` sobre una sesión existente pisa `sesion.json` | Corregido | `twin_experiment` no arranca si la carpeta ya tiene `sesion.json` y sugiere `--resume` | `test_out_refuses_a_folder_that_already_has_a_session` |
+
+## Bajas
+
+| # | Observación | Estado | Cambio | Comprobación |
+|---|---|---|---|---|
+| HW-3 | Al frenar, la extrapolación deja la posición por delante del contador y la lectura siguiente la devuelve hacia atrás: velocidad inversa fantasma en la odometría | Corregido | Entre lecturas, la posición avanza con la velocidad prevista: la última medida más su tendencia (la diferencia con la anterior, dividida por el tiempo del Arduino entre las dos), sin cruzar nunca el cero. Con una frenada al límite del controlador la predicción coincide con el contador y no hay paso atrás. Después de líneas perdidas o de un silencio no se usa la tendencia. Una parada brusca (sin rampa) todavía puede dar un paso atrás en la lectura siguiente: nada puede preverla | `BrakingDoesNotShowAReverseSpeed`: frenada a 20 rad/s², velocidad de diff_drive (ventana de 10 ciclos) nunca negativa; con la extrapolación anterior la misma prueba falla. `PredictionNeverReversesTheWheel`, `TrendIsNotTrustedAfterLostLines` |
+| HW-4 | `format_wheel_command`: 9,996 se enviaba como `010.00` y −0,004 como `rn00.00` (invierte el puente H con consigna cero) | Corregido | Se redondea primero y después se eligen el signo y el relleno | `CommandIsRoundedBeforeTheSignAndPadding` |
+| HW-5 | La lógica de `BumperbotInterface` no tiene pruebas | Corregido | La decisión de qué escribir según el tiempo sin datos salió a una función sin ROS (`link_action`), con prueba. Lo demás de la interfaz es lectura del puerto y registro | `WriteFollowsHowLongTheArduinoHasBeenQuiet` |
+| N5-3 | El cero de `scripted_driver` con Ctrl-C no llegaba a salir | Corregido | `rclpy.init(signal_handler_options=SignalHandlerOptions.NO)`: el Ctrl-C llega como `KeyboardInterrupt` con el contexto todavía vivo, y se publica cero tres veces antes de cerrar | Revisado a mano (necesita ROS) |
+| N5-4 | `nav_preview` dejaba el registro abierto con Ctrl-C o error | Corregido | El `finally` pide `resume_sync` y `close_log` | — |
+| N5-5 | La estimación de la diferencia de relojes se sesga con la red emulada, y no se usa para corregir | Corregido | El puente solo toma muestras de la diferencia de relojes sin red emulada (retardo y variación en cero), y conserva la última estimación mientras hay emulación. `true_error` interpola la pose real en el instante t + diferencia (diferencia = Pi − PC). El aviso de más de 10 ms ahora dice que se corrigió y que hay que revisar chrony | `test_clock_offset_is_only_measured_without_emulated_delay`, `test_true_error_corrects_the_measured_clock_offset` |
+| N5-6 | `build_schedule` acepta una fuente de CAL dentro de un grupo que se corre después de CAL, y grupos con repeticiones distintas | Corregido | Las dos configuraciones lanzan `ValueError` con un mensaje que dice cómo arreglarlas. Ninguno de los protocolos incluidos las tenía | `test_unequal_repetitions_in_a_group_are_rejected`, `test_a_calibration_source_cannot_run_after_the_calibration`; los protocolos incluidos siguen armando su orden |
+| N5-7 | Casos borde de la sesión | Corregido | `[x]` ya no cruza CAL ni TUNE: la corrida anterior se olvida al llegar a uno de ellos. `--resume` compara una huella del protocolo (pasos, grupos y repeticiones) y se niega si cambió. Una corrida sin registro, o cuyo CSV ya no existe, no cuenta y se repite al retomar. `parse_answer` acepta solo `s`, `x`, `q` (o `saltar`, `terminar`): "si" se vuelve a preguntar en vez de saltar la corrida. `Session.save` hace `fsync` antes de reemplazar el archivo | `test_protocol_fingerprint_changes_with_the_protocol`, `test_resume_refuses_an_edited_protocol`, `test_a_run_without_its_log_does_not_count`, `test_operator_answers` |
+| N5-8 | Restos del predictor de Smith | Corregido | La pose observada se adelanta también lo que esperó en el PC (`now − odom_rx`, 0-25 ms). Los ceros del tramo sin datos y de `pause_sync` se guardan entre los comandos enviados (`_send_follow`), así la reproducción no sigue con el último comando. El CSV tiene la columna `smith_model` (1 con modelo, 0 cinemático) y el informe avisa de cada corrida compensada que usó la reproducción cinemática | `test_smith_predictor_type_is_reported` |
+| N5-9 | La familia de Holm depende de los datos | Corregido | La corrección se hace sobre todas las comparaciones planeadas en el protocolo (8 en `protocolo_real`); las que no tienen p cuentan como si su p fuera 1. El informe dice el tamaño de la familia | `test_holm_family_counts_the_planned_comparisons_without_p` |
+| N5-10 | Configuración de chrony | Corregido | En la Pi, el PC queda como única fuente: se comentan las líneas `pool`, `server` y `sourcedir` de `chrony.conf` y el servidor va en `/etc/chrony/conf.d/bumperbot.conf` con `iburst prefer trust`; volver a correr el script con otra IP reemplaza ese archivo. Se quitó la línea `makestep` que nunca se agregaba (el `makestep 1 3` de Ubuntu ya corrige la hora al arrancar). En el PC, si `ufw` está activo, el script dice cómo abrir el puerto 123/udp. README, paso 3 | `bash -n`; no se corrió en un equipo |
+| N5-11 | Documentos que no coinciden | Corregido | Notas en `RESPUESTA_REVISION_4` (R4-M1, R4-M2, R4-M4, R4-L7, R4-L12), `REVISION_GENERAL` y `RESPUESTA_OPTIMIZACION`. `tune.py`: el informe usa los pesos del costo y las ganancias de partida reales (`--effort-weight`, `start`). README, paso 5 (HW-2) | — |
+| R4-L7 | Los límites del URDF no contaban el giro | Corregido | ±43 rad/s: 0,7 m/s / 0,033 m más 8,5 rad/s × 0,085 m / 0,033 m | — |
+| R4-L17 | Ver N5-4 | Corregido | | |
+
+## Para el texto de la tesis
+
+- **Familia de Holm (N5-9):** la corrección se aplica sobre las 8 comparaciones planeadas de `protocolo_real`, también si alguna queda sin datos.
+- **Diferencia de relojes (N5-5):** se acepta hasta 50 ms y se corrige en el cálculo del error real con la estimación hecha sin red emulada. Lo que queda es el error de esa estimación (suposición de retardo simétrico), no la diferencia.
+
+## Pruebas
+
+- gtest de `bumperbot_firmware`: 27 pruebas (antes 20).
+- pytest de `bumperbot_digital_twin` sin la integración: 161 aprobadas, 1 omitida (el panel, sin PyQt5), con mensajes de ROS de reemplazo; en CI corren contra Humble.
+- El sketch compila; en CI, para Uno y Nano.
+
+## Lo que sigue en el robot
+
+1. Cargar el sketch nuevo (las líneas ahora traen `t`; con el sketch anterior la Pi avisa que es viejo).
+2. README, paso 5, **con las ruedas en el aire**.
+3. README, paso 3: `chronyc sources` en la Pi debe mostrar solo el PC, con `^*`.
+4. Toma de datos con `protocolo_real`.

@@ -135,11 +135,17 @@ def welch_t(a, b):
     return float(t), float(df), float(2 * st.t.sf(abs(t), df))
 
 
-def holm(pvalues):
-    """p ajustados por Holm-Bonferroni (los NaN quedan NaN y no cuentan)."""
+def holm(pvalues, family_size=None):
+    """p ajustados por Holm-Bonferroni.
+
+    La familia es de `family_size` comparaciones (por defecto, las que tienen p).
+    Las que no tienen p (NaN) quedan NaN pero cuentan en la familia, como si su p
+    fuera 1: así la corrección no se aligera cuando una comparación planeada se
+    queda sin datos (N5-9).
+    """
     idx = [i for i, p in enumerate(pvalues) if math.isfinite(p)]
     ordered = sorted(idx, key=lambda i: pvalues[i])
-    m = len(ordered)
+    m = max(len(ordered), family_size or 0)
     adjusted = [math.nan] * len(pvalues)
     running = 0.0
     for rank, i in enumerate(ordered):
@@ -301,8 +307,8 @@ def build_report(csv_paths, out_dir, protocol=None, plots=True):
             results_cmp.append({"a": a_name, "b": b_name, "metrica": key,
                                 "media_a": np.nanmean(a) if np.isfinite(a).any() else math.nan,
                                 "media_b": np.nanmean(b) if np.isfinite(b).any() else math.nan, **c})
-        # Holm-Bonferroni sobre las comparaciones concluyentes del protocolo
-        adjusted = holm([c["p"] if c["concluyente"] else math.nan for c in results_cmp])
+        # Holm-Bonferroni sobre todas las comparaciones planeadas en el protocolo
+        adjusted = holm([c["p"] if c["concluyente"] else math.nan for c in results_cmp], len(results_cmp))
         for c, p_holm in zip(results_cmp, adjusted):
             c["p_holm"] = p_holm
             if c["concluyente"]:
@@ -321,11 +327,13 @@ def build_report(csv_paths, out_dir, protocol=None, plots=True):
                          f"| {num(c['media_b'] * scale, '.2f')} {unit} | {num(c['diferencia'] * scale, '+.2f')} {unit} "
                          f"| {ci} | {c['n_a']}/{c['n_b']} | {num(c['t'], '.2f')} | {num(c['gl'], '.1f')} "
                          f"| {num(c['p'], '.4f')} | {num(c['p_holm'], '.4f')} | {c['veredicto']} |")
-        m = sum(1 for c in results_cmp if c["concluyente"])
+        m = len(results_cmp)
         lines += ["", "Si el intervalo de confianza de la diferencia contiene el cero, los datos no muestran "
                   "una diferencia clara entre A y B. El p de Holm corrige por hacer varias comparaciones a la "
                   f"vez: sin corregir, con {m} comparaciones a α = 0,05 la probabilidad de al menos un falso "
-                  f"positivo sería de hasta un {100 * (1 - 0.95 ** m):.0f} %."]
+                  f"positivo sería de hasta un {100 * (1 - 0.95 ** m):.0f} %. La familia de la corrección son "
+                  f"las {m} comparaciones planeadas en el protocolo, también las que quedaron sin datos o no "
+                  "concluyentes, para que la corrección no dependa de cuántas corridas salieron bien."]
         if any(c["veredicto"].startswith("no concluyente") for c in results_cmp):
             lines += [f"Las comparaciones con menos de {MIN_RUNS_FOR_TEST} corridas por grupo se marcan como no "
                       "concluyentes: con tan pocas corridas, el valor de p depende más de cuánto se parecieron "
@@ -342,10 +350,14 @@ def build_report(csv_paths, out_dir, protocol=None, plots=True):
             rtf = r.get("factor_tiempo_real", math.nan)
             if math.isfinite(rtf) and rtf < 0.95:
                 warnings.append(f"{tag}: el gemelo corrió a {rtf:.2f} veces el tiempo real")
+            if r.get("predictor_smith") == "cinemático":
+                warnings.append(f"{tag}: el predictor de Smith usó la reproducción cinemática porque no había "
+                                "un modelo calibrado cargado (¿falló CAL?)")
             off = r.get("desfase_relojes_ms", math.nan)
             if math.isfinite(off) and abs(off) > 10:
-                warnings.append(f"{tag}: los relojes del robot y del PC difieren en {off:.0f} ms; el error real "
-                                f"se desplaza unos {abs(off) * 0.15 / 10:.1f} cm a 0,15 m/s")
+                warnings.append(f"{tag}: los relojes del robot y del PC difieren en {off:.0f} ms. El error real "
+                                "ya se corrige con esa diferencia, pero tanta diferencia indica que chrony no "
+                                "está sincronizando: revísalo antes de la toma final")
     if warnings:
         lines += ["", "## Avisos de calidad de los datos", ""] + [f"- {w}" for w in warnings]
 

@@ -162,6 +162,9 @@ def test_experiment_protocol(tmp_path):
     for exp in ("M", "MC", "D", "DC", "R", "RC", "RT"):
         assert table[exp]["rmse"][2] == 2, f"{exp}: faltan corridas"
     assert (out_dir / "ganancias.yaml").exists()
+    runs = [r for r in json.load(open(out_dir / "sesion.json"))["corridas"] if r["completa"]]
+    assert runs and all(r["desfase_relojes_ms"] is not None and r["rtt_ms"] is not None for r in runs), \
+        "sesion.json sin diferencia de relojes o RTT por corrida"
 
     def m(exp, key="rmse"):
         return table[exp][key][0]

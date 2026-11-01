@@ -420,7 +420,7 @@ def main(argv=None):
         code = 1
     finally:
         try:
-            configure(resume_sync=True)
+            configure(resume_sync=True, close_log=True)
         except Exception:
             pass
         if results:

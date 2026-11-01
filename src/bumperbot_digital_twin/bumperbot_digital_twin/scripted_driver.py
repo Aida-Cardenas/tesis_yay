@@ -5,8 +5,11 @@ Publica velocidades en key_vel, la entrada de teclado de twist_mux, así que
 funciona igual en el robot real, en Gazebo o en fake_robot. Al terminar publica
 ceros y se cierra solo. El joystick (prioridad 99) siempre puede interrumpirlo.
 """
+import time
+
 import rclpy
 from rclpy.node import Node
+from rclpy.signals import SignalHandlerOptions
 from geometry_msgs.msg import Twist
 
 from bumperbot_digital_twin.trajectories import build_segments
@@ -65,18 +68,19 @@ class ScriptedDriver(Node):
 
 
 def main():
-    rclpy.init()
+    # Ctrl-C is handled here and not by rclpy: its handler shuts the context down
+    # first, and the zero speed in `finally` could no longer be published.
+    rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
     node = ScriptedDriver()
     try:
         while rclpy.ok() and not node.done:
             rclpy.spin_once(node, timeout_sec=0.1)
     except KeyboardInterrupt:
-        pass
+        node.get_logger().info("Interrumpido: velocidad cero")
     finally:
-        try:
+        for _ in range(3):
             node.pub.publish(Twist())
-        except Exception:
-            pass
+            time.sleep(0.05)
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

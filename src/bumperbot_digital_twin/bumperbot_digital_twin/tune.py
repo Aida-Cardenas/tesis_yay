@@ -18,7 +18,7 @@ import sys
 
 from bumperbot_digital_twin.dynamics import NOMINAL_MODEL, TwinModel
 from bumperbot_digital_twin.tuning import (
-    DEFAULT_GAINS, TIE_TOLERANCE, CostWeights, Limits, save_gains, scenarios_from, simulate, tune,
+    TIE_TOLERANCE, CostWeights, Limits, save_gains, scenarios_from, simulate, tune,
 )
 
 
@@ -27,7 +27,7 @@ def parse_list(text, cast=str):
 
 
 def report_markdown(result, scenarios, real_model, twin_model):
-    g, d = result.gains, DEFAULT_GAINS
+    g, d, w = result.gains, result.start, result.weights
     lines = [
         "# Sintonización de la ley de seguimiento", "",
         f"Modelo del robot real: lineal K={real_model.linear.gain:.3f} τ={real_model.linear.tau:.3f} s "
@@ -39,10 +39,11 @@ def report_markdown(result, scenarios, real_model, twin_model):
         f"| Antes | {d['kx']:.2f} | {d['ky']:.2f} | {d['ktheta']:.2f} | {result.default_cost:.4f} |",
         f"| Después | {g['kx']:.2f} | {g['ky']:.2f} | {g['ktheta']:.2f} | {result.cost:.4f} |", "",
         f"{result.evaluations} combinaciones simuladas en {len(scenarios)} escenarios.",
-        "Costo de cada escenario: RMSE de la posición real entre los robots en simulación + 0,05 × RMSE "
-        "de orientación + 0,01 × esfuerzo de control; se promedia entre escenarios. Entre las combinaciones "
-        f"a menos de un {TIE_TOLERANCE:.0%} del mejor costo se elige la más cercana a las ganancias por defecto, "
-        "para que el resultado se pueda repetir cuando el costo casi no cambia con alguna ganancia.",
+        f"Costo de cada escenario: RMSE de la posición real entre los robots en simulación + {w.heading:g} × "
+        f"RMSE de orientación + {w.effort:g} × esfuerzo de control; se promedia entre escenarios. Entre las "
+        f"combinaciones a menos de un {TIE_TOLERANCE:.0%} del mejor costo se elige la más cercana a las "
+        "ganancias de partida (Antes), para que el resultado se pueda repetir cuando el costo casi no cambia "
+        "con alguna ganancia.",
         (f"Atención: {', '.join(result.at_bounds)} quedó en el límite de la búsqueda." if result.at_bounds
          else "Ninguna ganancia quedó en el límite de la búsqueda."), "",
         "| Escenario | RMSE antes [cm] | RMSE después [cm] | Máx. antes [cm] | Máx. después [cm] |",
@@ -65,7 +66,7 @@ def plot(result, scenarios, real_model, twin_model, limits, path):
     n = len(chosen)
     fig, axes = plt.subplots(2, n, figsize=(4.5 * n, 7.5), squeeze=False)
     for i, s in enumerate(chosen):
-        before = simulate(DEFAULT_GAINS, s, real_model, twin_model, limits, keep=True)
+        before = simulate(result.start, s, real_model, twin_model, limits, keep=True)
         after = simulate(result.gains, s, real_model, twin_model, limits, keep=True)
         ax = axes[0][i]
         ax.plot(before.leader[:, 0], before.leader[:, 1], color="#444444", lw=1.5, label="Líder")

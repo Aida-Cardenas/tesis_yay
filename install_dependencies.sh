@@ -57,14 +57,18 @@ sudo apt-get install -y chrony
 CHRONY_CONF=/etc/chrony/chrony.conf
 if [ "$MODE" = "robot" ]; then
   if [ -n "$PC_IP" ]; then
-    if ! grep -q "^server $PC_IP " "$CHRONY_CONF"; then
-      echo "server $PC_IP iburst prefer" | sudo tee -a "$CHRONY_CONF" > /dev/null
+    # Solo el PC como fuente: con los servidores de internet activos, si no
+    # coinciden con el PC chrony podría descartarlo. "trust" lo mantiene, y volver
+    # a correr el script con otra IP reemplaza el archivo. El chrony.conf de Ubuntu
+    # ya trae "makestep 1 3", que corrige de un salto la hora de la Pi (no tiene
+    # reloj propio) en las primeras actualizaciones después de arrancar.
+    sudo sed -i -E 's/^(pool|server|sourcedir) /#&/' "$CHRONY_CONF"
+    sudo mkdir -p /etc/chrony/conf.d
+    if ! grep -q "^confdir /etc/chrony/conf.d" "$CHRONY_CONF"; then
+      echo "confdir /etc/chrony/conf.d" | sudo tee -a "$CHRONY_CONF" > /dev/null
     fi
-    # Sin internet la hora puede estar muy mal al arrancar: se corrige de un salto
-    if ! grep -q "^makestep" "$CHRONY_CONF"; then
-      echo "makestep 1 -1" | sudo tee -a "$CHRONY_CONF" > /dev/null
-    fi
-    echo ">> chrony: la Raspberry Pi toma la hora del PC ($PC_IP)"
+    echo "server $PC_IP iburst prefer trust" | sudo tee /etc/chrony/conf.d/bumperbot.conf > /dev/null
+    echo ">> chrony: la Raspberry Pi toma la hora solo del PC ($PC_IP)"
   else
     echo ">> ADVERTENCIA: sin la IP del PC, chrony usa los servidores de internet. Para la toma de datos"
     echo "   vuelve a correr: ./install_dependencies.sh robot <IP del PC>"
@@ -74,6 +78,9 @@ else
     printf "allow 10.0.0.0/8\nallow 172.16.0.0/12\nallow 192.168.0.0/16\nlocal stratum 10\n" | sudo tee -a "$CHRONY_CONF" > /dev/null
   fi
   echo ">> chrony: este PC sirve la hora a la red local (también sin internet)"
+  if command -v ufw > /dev/null && sudo ufw status | grep -q "Status: active"; then
+    echo ">> ufw está activo: abre el puerto de la hora para la Raspberry Pi con: sudo ufw allow 123/udp"
+  fi
 fi
 sudo systemctl restart chrony || sudo service chrony restart || true
 

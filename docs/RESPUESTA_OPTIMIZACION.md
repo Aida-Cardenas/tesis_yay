@@ -10,12 +10,12 @@ Cambios del 26 de octubre de 2026, hechos antes de cargar el firmware y de tomar
 
 - **Sketch (`robot_control.ino`).**
   - Cuenta los dos flancos de la fase A (770 cuentas por vuelta, error de cuantización 1,8 % a 0,15 m/s). Cada flanco suma o resta según la fase B, así que el contador sabe el sentido sin una variable aparte.
-  - Agrega a cada línea el contador de cada rueda (`rp4.55,ln0.12,rc1234,lc65000,`). La velocidad y su signo salen de la diferencia de cuentas en el intervalo medido.
+  - Agrega a cada línea el contador de cada rueda (`rp4.55,ln0.12,rc1234,lc65000,`; desde la revisión 5 también la hora del Arduino, `t81230,`). La velocidad y su signo salen de la diferencia de cuentas en el intervalo medido.
   - El PID recibe la velocidad en el sentido ordenado: una rueda que todavía gira al revés cuenta como negativa y el PID empuja más, en vez de creer que ya se mueve.
   - Las dos ruedas comparten el mismo código (`struct Wheel`): el cambio de sentido, el modo del PID y la lectura del encoder ya no están escritos dos veces.
 - **Interfaz (`serial_protocol.cpp`, `bumperbot_interface.cpp`).**
   - La posición de cada rueda sale del contador, así que es exacta en cada lectura aunque se pierdan líneas. El contador de 16 bits da la vuelta y se usan diferencias, válidas aunque pase de 65535 a 0.
-  - Entre lecturas la posición avanza con la última velocidad (para que `diff_drive_controller` vea un movimiento suave), y la lectura siguiente la devuelve al valor exacto.
+  - Entre lecturas la posición avanza con la última velocidad (para que `diff_drive_controller` vea un movimiento suave), y la lectura siguiente la devuelve al valor exacto. *Revisión 5: suave solo a velocidad constante; al frenar daba pasos hacia atrás. Ahora usa también la tendencia de la velocidad (HW-3).*
   - Las cuentas por vuelta son el parámetro `encoder_counts_per_rev` del URDF (770).
   - Si llegan líneas sin contadores, el aviso dice que el sketch cargado es viejo.
 
@@ -23,7 +23,7 @@ Cambios del 26 de octubre de 2026, hechos antes de cargar el firmware y de tomar
 |---|---|
 | R3-M1: sin lecturas por más de 0,3 s, velocidad cero y la posición deja de avanzar | Igual; además la posición vuelve a la última exacta en vez de quedarse con lo extrapolado |
 | R4-L2: una lectura cuenta solo si trae las dos ruedas | Ahora tiene que traer velocidad y contador de las dos (`WheelReading::complete`) |
-| R4-L3 y R4-L4: cero sin realimentación, reconexión cada 2 s | Sin cambios; al reconectar, el contador del Arduino reiniciado se toma como nueva referencia y la posición no salta |
+| R4-L3 y R4-L4: cero sin realimentación, reconexión cada 2 s | Sin cambios; al reconectar, el contador del Arduino reiniciado se toma como nueva referencia y la posición no salta (*revisión 5: también si se reinicia sin error de puerto, HW-1*) |
 | R4-L5: PID con `SetSampleTime(90)` y Ki, Kd reescalados | Igual; las ganancias se reescalan a partir de las del constructor, sin repetirlas |
 | R4-L6: velocidad con el tiempo medido con `micros()`; "no se cambió el protocolo para enviar pulsos acumulados" | La velocidad se sigue dividiendo por el tiempo medido, y ahora el protocolo sí envía los pulsos acumulados |
 | R4-M5: PID en MANUAL con consigna cero y al cambiar de sentido | Igual (`updateMode`, `setDirection`) |
@@ -61,7 +61,7 @@ El robot de mentira y Gazebo no usan el protocolo serie, así que la odometría 
 
 ## Lo que se revisó y no se cambió
 
-- **Predictor de Smith:** tarda menos de 1 ms por ciclo de 50 ms; no hacía falta optimizarlo.
+- **Predictor de Smith:** tarda menos de 1 ms por ciclo de 50 ms; no hacía falta optimizarlo. *Revisión 5: medido de nuevo, 0,6 / 1,2 / 1,9 ms con τ = 0,15 / 0,3 / 0,5 s; sigue siendo despreciable frente a los 50 ms.*
 - **Periodo del Arduino (100 ms):** bajarlo empeora la resolución de la velocidad, y R4-L5 y R4-L6 están ajustados a él.
 - **Frecuencia de los comandos (100 Hz):** sobra, pero no causa ningún problema medible.
 - **Carga de la Pi (AMCL, Nav2):** se cambia solo si, medida con todo corriendo, pasa de 70 %.

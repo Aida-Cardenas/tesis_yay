@@ -57,9 +57,13 @@ def test_each_run_closes_its_log_after_settling(tmp_path, monkeypatch):
     r = make_runner(tmp_path)
     calls = []
 
+    (tmp_path / "x.csv").write_text("t\n")
+
     def configure(**kw):
         calls.append(kw)
-        return types.SimpleNamespace(log_path=str(tmp_path / "x.csv"), message="ok")
+        rtt = 250.0 if kw.get("close_log") else float("nan")
+        return types.SimpleNamespace(log_path=str(tmp_path / "x.csv"), message="ok", clock_offset_ms=1.5,
+                                     rtt_ms=rtt)
 
     r.configure = configure
     r.player = types.SimpleNamespace(play=lambda *a: calls.append({"play": True}) or 5.0)
@@ -69,7 +73,9 @@ def test_each_run_closes_its_log_after_settling(tmp_path, monkeypatch):
             "laps": 1, "pause": 0.5, "settle": 2.0}
     assert r.run_experiment(step, 1) == "ok"
     assert calls[0].get("new_log") and calls[1].get("play") and calls[-1] == {"close_log": True}
-    assert r.session.good_runs()[0]["registro"] == str(tmp_path / "x.csv")
+    run = r.session.good_runs()[0]
+    assert run["registro"] == str(tmp_path / "x.csv")
+    assert run["desfase_relojes_ms"] == 1.5 and run["rtt_ms"] == 250.0
     assert r.logs == {"E1": [str(tmp_path / "x.csv")]}
 
 
@@ -111,3 +117,23 @@ def test_resume_refuses_a_session_of_another_protocol(tmp_path):
     args = argparse.Namespace(resume=str(tmp_path), repetitions=None, out=None, real_domain=10, twin_domain=20)
     with pytest.raises(ValueError, match="protocolo_ci"):
         Runner(args, {"name": "protocolo_real"}, [])
+
+
+def test_out_refuses_a_folder_that_already_has_a_session(tmp_path):
+    from bumperbot_digital_twin.session import Session
+    Session(str(tmp_path)).save()
+    args = argparse.Namespace(resume=None, repetitions=None, out=str(tmp_path), real_domain=10, twin_domain=20)
+    with pytest.raises(ValueError, match="--resume"):
+        Runner(args, {"name": "protocolo_real"}, [])
+
+
+def test_resume_refuses_an_edited_protocol(tmp_path):
+    from bumperbot_digital_twin.session import Session, protocol_fingerprint
+    steps = [{"type": "experiment", "name": "E1", "repetitions": 5}]
+    s = Session(str(tmp_path))
+    s.data.update({"protocolo": "p", "repeticiones": None, "huella_protocolo": protocol_fingerprint(steps, {})})
+    s.save()
+    args = argparse.Namespace(resume=str(tmp_path), repetitions=None, out=None, real_domain=10, twin_domain=20)
+    edited = [dict(steps[0], repetitions=3)]
+    with pytest.raises(ValueError, match="cambiaron"):
+        Runner(args, {"name": "p"}, edited)

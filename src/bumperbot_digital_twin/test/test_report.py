@@ -212,6 +212,15 @@ def test_holm_adjustment():
     assert math.isnan(adj[2])
 
 
+def test_holm_family_counts_the_planned_comparisons_without_p():
+    from bumperbot_digital_twin.report import holm
+    adj = holm([0.01, 0.04, float("nan"), 0.03], family_size=4)
+    assert adj[0] == pytest.approx(0.04)
+    assert adj[3] == pytest.approx(0.09)
+    assert adj[1] == pytest.approx(0.09)
+    assert math.isnan(adj[2])
+
+
 def test_zero_variance_keeps_the_sign_and_needs_scipy_for_p():
     pytest.importorskip("scipy")
     from bumperbot_digital_twin.report import welch_t

@@ -9,10 +9,11 @@ aleatorio dentro de la ronda. La semilla queda guardada en la sesión, así que
 el mismo protocolo con la misma semilla da siempre el mismo orden.
 
 Registro de la sesión. `sesion.json` guarda cada corrida (completa o no, válida
-o descartada) con su registro, la diferencia de relojes y el voltaje anotado.
-Con él se puede retomar una sesión interrumpida y el informe usa solo las
-corridas completas y válidas.
+o descartada) con su registro, la diferencia de relojes, el RTT y el voltaje
+anotado. Con él se puede retomar una sesión interrumpida y el informe usa solo
+las corridas completas, válidas y con su registro.
 """
+import hashlib
 import json
 import os
 import random
@@ -36,6 +37,13 @@ def repetitions(step, override=None):
     return int(override or step["repetitions"])
 
 
+def protocol_fingerprint(steps, protocol, override_reps=None):
+    """Huella del protocolo tal como se ejecuta: cambia si se edita el YAML o --repetitions."""
+    text = json.dumps({"steps": steps, "interleave": protocol.get("interleave") or [],
+                       "repetitions": override_reps}, sort_keys=True, default=str)
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
 def build_schedule(steps, protocol, seed, override_reps=None):
     """Lista de segmentos en el orden en que se ejecutan.
 
@@ -43,7 +51,10 @@ def build_schedule(steps, protocol, seed, override_reps=None):
     {"kind": "runs", "name": ..., "items": [(step, repetición), ...]}. Un grupo
     intercalado se ejecuta en la posición de su último miembro en el YAML, así
     todos sus miembros ya tienen disponibles la calibración y las ganancias que
-    piden los pasos anteriores.
+    piden los pasos anteriores. Se rechazan dos configuraciones que romperían el
+    diseño: un grupo con repeticiones distintas (dejaría una cola sin intercalar)
+    y una corrida fuente de una calibración que, por estar en un grupo, se
+    correría después de esa calibración.
     """
     groups = [list(g) for g in (protocol.get("interleave") or [])]
     experiments = {s["name"]: s for s in steps if s["type"] == "experiment"}
@@ -57,6 +68,17 @@ def build_schedule(steps, protocol, seed, override_reps=None):
             member_of[name] = gi
     last_index = {gi: max(i for i, s in enumerate(steps) if s.get("name") in group)
                   for gi, group in enumerate(groups)}
+    for gi, group in enumerate(groups):
+        reps = {n: repetitions(experiments[n], override_reps) for n in group}
+        if len(set(reps.values())) > 1:
+            raise ValueError(f"el grupo {' + '.join(group)} tiene repeticiones distintas ({reps}): "
+                             "las corridas que sobran quedarían sin intercalar")
+    for i, step in enumerate(steps):
+        for source in step.get("calibrate_from", []) if step["type"] == "calibrate" else []:
+            if source in member_of and last_index[member_of[source]] > i:
+                raise ValueError(f"{source} es fuente de la calibración {step.get('name', 'CAL')} pero su grupo "
+                                 "de interleave se corre después de ella: saca el grupo o pon la calibración "
+                                 "después de todos sus miembros")
     rng = random.Random(seed)
     segments = []
     for i, step in enumerate(steps):
@@ -81,11 +103,15 @@ def build_schedule(steps, protocol, seed, override_reps=None):
     return segments
 
 
+ANSWERS = {"s": "s", "saltar": "s", "x": "x", "q": "q", "terminar": "q"}
+
+
 def parse_answer(text):
     """Respuesta del operador antes de una corrida.
 
     Enter → continuar; un número → voltaje de la batería y continuar; s → saltar;
-    x → la corrida anterior salió mal, repetirla; q → terminar.
+    x → la corrida anterior salió mal, repetirla; q → terminar. Cualquier otra
+    cosa (por ejemplo "si") se vuelve a preguntar en vez de tomar su primera letra.
     """
     text = (text or "").strip().lower().replace(",", ".")
     if not text:
@@ -93,7 +119,7 @@ def parse_answer(text):
     try:
         volts = float(text)
     except ValueError:
-        return text[:1], None
+        return ANSWERS.get(text, "?"), None
     if not 0.0 < volts < 60.0:
         return "?", None
     return "c", volts
@@ -126,6 +152,19 @@ class RunQueue:
         return True
 
 
+def run_problem(run):
+    """Por qué una corrida no cuenta, o None si cuenta."""
+    if not run.get("completa"):
+        return run.get("motivo", "incompleta")
+    if not run.get("valida"):
+        return run.get("motivo", "descartada")
+    if not run.get("registro"):
+        return "sin registro (¿el puente corre con log_enabled=false?)"
+    if not os.path.exists(run["registro"]):
+        return f"no se encuentra su registro {run['registro']}"
+    return None
+
+
 class Session:
     def __init__(self, folder, data=None):
         self.folder = folder
@@ -145,6 +184,8 @@ class Session:
         tmp = self.path + ".tmp"
         with open(tmp, "w") as f:
             json.dump(self.data, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, self.path)
 
     def get(self, key, default=None):
@@ -170,7 +211,7 @@ class Session:
         return None
 
     def good_runs(self):
-        return [r for r in self.data["corridas"] if r.get("completa") and r.get("valida")]
+        return [r for r in self.data["corridas"] if run_problem(r) is None]
 
     def done(self):
         return {(r["experimento"], r["repeticion"]) for r in self.good_runs()}
@@ -182,4 +223,4 @@ class Session:
         return logs
 
     def discarded(self):
-        return [r for r in self.data["corridas"] if not (r.get("completa") and r.get("valida"))]
+        return [dict(r, motivo=run_problem(r)) for r in self.data["corridas"] if run_problem(r) is not None]

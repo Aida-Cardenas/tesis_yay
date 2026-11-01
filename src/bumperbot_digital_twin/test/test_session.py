@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from bumperbot_digital_twin.session import RunQueue, Session, build_schedule, parse_answer
+from bumperbot_digital_twin.session import (RunQueue, Session, build_schedule, parse_answer,
+                                            protocol_fingerprint)
 
 
 def _steps():
@@ -48,6 +49,26 @@ def test_bad_interleave_is_rejected():
         build_schedule(_steps(), {"interleave": [["E1"], ["E1", "E2"]]}, seed=1)
 
 
+def test_unequal_repetitions_in_a_group_are_rejected():
+    with pytest.raises(ValueError, match="repeticiones distintas"):
+        build_schedule(_steps(), {"interleave": [["E3", "A1"]]}, seed=1)
+    assert build_schedule(_steps(), {"interleave": [["E3", "A1"]]}, seed=1, override_reps=3)
+
+
+def test_a_calibration_source_cannot_run_after_the_calibration():
+    with pytest.raises(ValueError, match="fuente de la calibración"):
+        build_schedule(_steps(), {"interleave": [["E1", "E3"]]}, seed=1)
+
+
+def test_protocol_fingerprint_changes_with_the_protocol():
+    base = protocol_fingerprint(_steps(), PROTOCOL)
+    assert base == protocol_fingerprint(_steps(), PROTOCOL)
+    assert base != protocol_fingerprint(_steps(), PROTOCOL, override_reps=3)
+    edited = _steps()
+    edited[0]["repetitions"] = 4
+    assert base != protocol_fingerprint(edited, PROTOCOL)
+
+
 def test_operator_answers():
     assert parse_answer("") == ("c", None)
     assert parse_answer("11,8") == ("c", 11.8)
@@ -55,6 +76,9 @@ def test_operator_answers():
     assert parse_answer("x") == ("x", None)
     assert parse_answer("q") == ("q", None)
     assert parse_answer("118") == ("?", None)
+    for unclear in ("si", "sí", "sx", "quizás"):
+        assert parse_answer(unclear) == ("?", None)
+    assert parse_answer("saltar") == ("s", None)
 
 
 def test_a_skipped_run_comes_back_once_at_the_end():
@@ -68,20 +92,32 @@ def test_a_skipped_run_comes_back_once_at_the_end():
 
 
 def test_session_resume_keeps_only_complete_valid_runs(tmp_path):
+    a, b, c = (str(tmp_path / n) for n in ("a.csv", "b.csv", "c.csv"))
+    for path in (a, b, c):
+        open(path, "w").close()
     s = Session(str(tmp_path))
-    s.record(experimento="E1", repeticion=1, registro="a.csv", completa=True)
-    s.record(experimento="E1", repeticion=2, registro="b.csv", completa=False, motivo="interrumpida")
-    s.record(experimento="E2", repeticion=1, registro="c.csv", completa=True)
+    s.record(experimento="E1", repeticion=1, registro=a, completa=True)
+    s.record(experimento="E1", repeticion=2, registro=b, completa=False, motivo="interrumpida")
+    s.record(experimento="E2", repeticion=1, registro=c, completa=True)
     s.invalidate_last("mal hecha")
     s.set("semilla", 42)
     again = Session.load(str(tmp_path))
     assert again.done() == {("E1", 1)}
-    assert again.logs() == {"E1": ["a.csv"]}
+    assert again.logs() == {"E1": [a]}
     assert again.get("semilla") == 42
-    assert [r["registro"] for r in again.discarded()] == ["b.csv", "c.csv"]
+    assert [r["registro"] for r in again.discarded()] == [b, c]
     assert json.load(open(tmp_path / "sesion.json"))["corridas"][2]["motivo"] == "mal hecha"
     q = RunQueue([({"name": "E1"}, 1), ({"name": "E1"}, 2)], again.done())
     assert q.pop() == ({"name": "E1"}, 2) and not q
+
+
+def test_a_run_without_its_log_does_not_count(tmp_path):
+    s = Session(str(tmp_path))
+    s.record(experimento="E1", repeticion=1, registro="", completa=True)
+    s.record(experimento="E1", repeticion=2, registro=str(tmp_path / "borrado.csv"), completa=True)
+    assert s.good_runs() == [] and s.done() == set()
+    reasons = [r["motivo"] for r in s.discarded()]
+    assert "log_enabled" in reasons[0] and "borrado.csv" in reasons[1]
 
 
 def _load(name):

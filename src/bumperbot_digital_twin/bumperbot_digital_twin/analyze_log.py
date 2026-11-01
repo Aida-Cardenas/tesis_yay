@@ -144,23 +144,33 @@ def _interp_by(times, values, at):
     return np.interp(at, s, values[idx]), s[0], s[-1]
 
 
+def clock_offset_s(d):
+    """Diferencia de relojes Raspberry Pi − PC medida por el puente, en s (0 si no hay)."""
+    if "clock_offset_ms" not in d or not np.isfinite(d["clock_offset_ms"]).any():
+        return 0.0
+    return float(np.nanmedian(d["clock_offset_ms"])) / 1000.0
+
+
 def true_error(d):
     """Distancia entre el gemelo y el robot real en el mismo instante de reloj.
 
     La pose real se interpola al instante de cada fila usando el sello de tiempo
-    de su odometría. La del gemelo, si el registro trae la hora en que llegó
-    (twin_rx), también se interpola, para que los dos robots se comparen en el
-    mismo instante y no con su último dato, que puede tener hasta un periodo de
-    atraso. Devuelve NaN si no hay sellos o si los relojes difieren en más de 2 s.
+    de su odometría, que es del reloj de la Raspberry Pi: el instante t del PC es
+    t + diferencia de relojes en la Pi. La del gemelo, si el registro trae la hora
+    en que llegó (twin_rx), también se interpola, para que los dos robots se
+    comparen en el mismo instante y no con su último dato, que puede tener hasta
+    un periodo de atraso. Devuelve NaN si no hay sellos o si los relojes difieren
+    en más de 2 s.
     """
     n = len(d["t"])
     out = np.full(n, math.nan)
     if true_error_status(d) is not None:
         return out
     ok = np.isfinite(d["real_stamp"]) & np.isfinite(d["real_x"]) & np.isfinite(d["twin_x"])
-    rx, r0, r1 = _interp_by(d["real_stamp"][ok], d["real_x"][ok], d["t"])
-    ry, _, _ = _interp_by(d["real_stamp"][ok], d["real_y"][ok], d["t"])
-    inside = ok & (d["t"] >= r0) & (d["t"] <= r1)
+    at = d["t"] + clock_offset_s(d)
+    rx, r0, r1 = _interp_by(d["real_stamp"][ok], d["real_x"][ok], at)
+    ry, _, _ = _interp_by(d["real_stamp"][ok], d["real_y"][ok], at)
+    inside = ok & (at >= r0) & (at <= r1)
     tx, ty = d["twin_x"], d["twin_y"]
     if "twin_rx" in d:
         tw = np.isfinite(d["twin_rx"]) & np.isfinite(d["twin_x"])
@@ -193,6 +203,14 @@ def real_time_factor(d):
     return float((d["twin_clock"][ok][-1] - d["twin_clock"][ok][0]) / wall) if wall > 0 else math.nan
 
 
+def smith_predictor(d):
+    """Predictor de Smith usado con el robot real de seguidor: con el modelo calibrado o cinemático."""
+    vals = finite(d["smith_model"]) if "smith_model" in d else np.array([])
+    if vals.size == 0:
+        return "—"
+    return "modelo" if np.mean(vals) > 0.5 else "cinemático"
+
+
 def flag(d, key):
     if key not in d:
         return "—"
@@ -222,6 +240,7 @@ def analyze(path, out_dir, plots=True):
         "realimentacion": flag(d, "feedback"),
         "compensacion": flag(d, "compensation"),
         "modelo_gemelo": flag(d, "twin_model"),
+        "predictor_smith": smith_predictor(d),
         "ganancias": gains_text(d),
         "red_retardo_ms": float(np.nanmedian(d["net_delay_ms"])) if "net_delay_ms" in d else 0.0,
         "red_perdida": float(np.nanmedian(d["net_loss"])) if "net_loss" in d else 0.0,

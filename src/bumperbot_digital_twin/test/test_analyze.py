@@ -21,7 +21,7 @@ def write_run(path, lag_s=0.2, err=0.01, n=400, leader="real", feedback=1, extra
                        real_x=t * 0.1, twin_x=t * 0.1 - err, real_stamp=1000 + t,
                        real_v=v if leader == "real" else fv, twin_v=fv if leader == "real" else v,
                        ff_v=v, rtt_ms=10.0 + (i % 5), real_odom_age_ms=math.nan, leader_cmd_age_ms=5.0,
-                       anomalies="", twin_rx=1000 + t, rtt_ema_ms=12.0, clock_offset_ms=0.5,
+                       anomalies="", twin_rx=1000 + t, rtt_ema_ms=12.0, clock_offset_ms=0.0,
                        twin_clock=1000 + t)
             row.update(extra or {})
             w.writerow([row[c] for c in cols])
@@ -82,6 +82,25 @@ def test_true_error_interpolates_the_twin_by_arrival_time(tmp_path):
     assert np.nanmax(e) < 1e-9
     del d["twin_rx"]
     assert np.nanmax(analyze_log.true_error(d)) > 0.004
+
+
+def test_true_error_corrects_the_measured_clock_offset(tmp_path):
+    import numpy as np
+    path = write_run(tmp_path / "twin_20260101_000000_o.csv", extra={"clock_offset_ms": 30.0})
+    d = analyze_log.load(str(path))
+    d["real_stamp"] = d["real_stamp"] + 0.03
+    assert abs(np.nanmean(analyze_log.true_error(d)) - 0.01) < 1e-6
+    d["clock_offset_ms"][:] = np.nan
+    assert abs(np.nanmean(analyze_log.true_error(d)) - 0.01) > 0.002
+
+
+def test_smith_predictor_type_is_reported(tmp_path):
+    path = write_run(tmp_path / "twin_20260101_000000_s.csv", extra={"smith_model": 0.0})
+    assert analyze_log.smith_predictor(analyze_log.load(str(path))) == "cinemático"
+    path = write_run(tmp_path / "twin_20260101_000001_s.csv", extra={"smith_model": 1.0})
+    assert analyze_log.smith_predictor(analyze_log.load(str(path))) == "modelo"
+    path = write_run(tmp_path / "twin_20260101_000002_s.csv", extra={"smith_model": math.nan})
+    assert analyze_log.smith_predictor(analyze_log.load(str(path))) == "—"
 
 
 def test_clock_problem_is_reported_as_such(tmp_path):

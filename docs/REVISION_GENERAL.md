@@ -7,7 +7,7 @@ Revisión propia del 26 de octubre de 2026, hecha después de la cuarta revisió
 | Problema | Qué podía pasar | Cambio |
 |---|---|---|
 | La interfaz mandaba comandos mientras el Arduino arrancaba | Abrir el puerto reinicia el Arduino; los bytes que llegan durante el bootloader pueden dejar un Nano con bootloader viejo esperando una carga de firmware en vez de correr el sketch | No se envía nada hasta la primera línea del Arduino |
-| Al reconectar el cable no se esperaba al Arduino | Igual que el anterior, después de un cable suelto | La reconexión vuelve a esperar la primera línea y conserva la posición de las ruedas, para que la odometría no salte (`WheelIntegrator::forget_reading`, gtest) |
+| Al reconectar el cable no se esperaba al Arduino | Igual que el anterior, después de un cable suelto | La reconexión vuelve a esperar la primera línea y conserva la posición de las ruedas, para que la odometría no salte (`WheelIntegrator::forget_reading`, gtest). *Revisión 5: solo si el puerto daba error; un reinicio sin error de puerto hacía saltar la odometría, corregido en HW-1* |
 | `scan_mode: Sensitivity` fijo para el RPLidar A1 | Un A1 que no tiene ese modo cierra el driver con "Can not start scan" | Modo típico del sensor (`scan_mode: ""`) |
 | El driver del LiDAR termina si `/dev/rplidar` todavía no existe | Sin LiDAR durante toda la sesión | Se reinicia cada 3 s; `use_lidar:=false` para probar sin el sensor |
 | La IMU reintentaba la conexión I2C 100 veces por segundo | Bus I2C saturado y sin explicación del fallo | Reintento cada segundo, cerrando el bus anterior, con un mensaje que dice qué revisar |
@@ -23,7 +23,7 @@ Revisión propia del 26 de octubre de 2026, hecha después de la cuarta revisió
 | Ctrl-C en `twin_navigate` no cancelaba la meta de Nav2 | El robot real seguía navegando solo después de interrumpir | Ctrl-C cancela la meta antes de salir | `test_ctrl_c_cancels_the_nav2_goal` |
 | La vista previa de una meta no ejecutada dejaba abierto su registro | El puente seguía escribiendo en `<meta>_vista` hasta el siguiente registro | Se cierra también cuando la meta no se ejecuta | — |
 | `--resume` aceptaba la carpeta de una sesión de otro protocolo o con otras repeticiones | Orden de corridas distinto del guardado y corridas mezcladas | Rechaza otro protocolo y reutiliza las repeticiones de la sesión; la sesión se valida antes de unirse a los dominios | `test_resume_refuses_a_session_of_another_protocol` |
-| Ctrl-C a mitad de un recorrido no mandaba velocidad cero | El robot seguía hasta que vencía la entrada de `twist_mux` (0,5 s) | `TrajectoryPlayer.stop()` y `scripted_driver` publican cero | — |
+| Ctrl-C a mitad de un recorrido no mandaba velocidad cero | El robot seguía hasta que vencía la entrada de `twist_mux` (0,5 s) | `TrajectoryPlayer.stop()` y `scripted_driver` publican cero (*revisión 5: el de `scripted_driver` no llegaba a salir; corregido en N5-3*) | — |
 | Los nodos mostraban trazas y "process has died" al cerrar el launch | Errores falsos en los registros de CI y del robot | Un solo `spin_node` para todos los nodos | Registros de CI |
 | `resumen.json` e `informe.json` con `NaN` | JSON inválido para otros programas | `json_safe` también en esos archivos | `test_json_safe_handles_numpy_values` |
 | Permisos de CI por defecto y puertos serie `0666` | El token de CI podía escribir en el repositorio; cualquier usuario de la Pi podía mover el robot | CI con `contents: read`; puertos `0660` para el grupo `dialout` | — |

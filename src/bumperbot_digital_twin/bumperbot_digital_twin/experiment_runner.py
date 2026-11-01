@@ -31,7 +31,8 @@ from bumperbot_msgs.srv import TwinConfigure
 from bumperbot_digital_twin.calibrate import fit_channel, plot_fit, read_identification_data
 from bumperbot_digital_twin.dynamics import TwinModel
 from bumperbot_digital_twin.report import build_report, resolve_protocol_path
-from bumperbot_digital_twin.session import RunQueue, Session, build_schedule, parse_answer
+from bumperbot_digital_twin.session import (SESSION_FILE, RunQueue, Session, build_schedule, parse_answer,
+                                            protocol_fingerprint)
 from bumperbot_digital_twin.tuning import DEFAULT_GAINS, load_gains_file
 from bumperbot_digital_twin.ros_util import DualDomain, TrajectoryPlayer
 
@@ -91,9 +92,17 @@ class Runner:
                                  f"{protocol.get('name', '')}: el orden de las corridas no coincidiría")
             if args.repetitions is None:
                 args.repetitions = self.session.get("repeticiones")
+            stored = self.session.get("huella_protocolo")
+            if stored and stored != protocol_fingerprint(steps, protocol, args.repetitions):
+                raise ValueError(f"El protocolo {protocol.get('name', '')} o las repeticiones cambiaron desde que "
+                                 f"empezó la sesión {self.session_dir}: el orden de las corridas no coincidiría. "
+                                 "Usa el mismo YAML y --repetitions, o empieza una sesión nueva")
         else:
             self.session_dir = os.path.expanduser(args.out or os.path.join(
                 "~/twin_resultados", f"{protocol.get('name', 'protocolo')}_{datetime.now():%Y%m%d_%H%M%S}"))
+            if os.path.exists(os.path.join(self.session_dir, SESSION_FILE)):
+                raise ValueError(f"{self.session_dir} ya tiene una sesión ({SESSION_FILE}); para seguirla usa "
+                                 f"--resume {self.session_dir}, o elige otra carpeta con --out")
             self.session = Session(self.session_dir)
         self.logs = self.session.logs()
         self.last_item = None
@@ -166,8 +175,10 @@ class Runner:
             gains=self.gains_for(step), align=True, new_log=True, log_tag=tag)
         run = {"experimento": step["name"], "repeticion": rep, "registro": res.log_path, "inicio": started,
                "voltaje": volts, "desfase_relojes_ms": _finite(getattr(res, "clock_offset_ms", math.nan)),
-               "rtt_ms": _finite(getattr(res, "rtt_ms", math.nan)), "completa": False}
+               "completa": False}
         print(f"   {res.message}")
+        if not res.log_path:
+            print("   ADVERTENCIA: el puente no está registrando (log_enabled=false): la corrida no contará.")
         try:
             time.sleep(1.5)
             if step["pattern"] == "free":
@@ -188,7 +199,9 @@ class Runner:
                 self.session.record(**run)
                 print(f"\n   {tag} interrumpida: no cuenta como corrida.")
             raise
-        self.configure(close_log=True)
+        # The RTT is read at the end, measured with this run's network
+        closed = self.configure(close_log=True)
+        run["rtt_ms"] = _finite(getattr(closed, "rtt_ms", math.nan))
         run["completa"] = True
         run["fin"] = datetime.now().isoformat(timespec="seconds")
         self.session.record(**run)
@@ -317,7 +330,9 @@ class Runner:
         if seed is None:
             seed = self.args.seed if self.args.seed is not None else random.SystemRandom().randrange(10 ** 6)
         self.session.data.update({"protocolo": self.protocol.get("name", ""), "semilla": seed,
-                                  "repeticiones": self.args.repetitions})
+                                  "repeticiones": self.args.repetitions,
+                                  "huella_protocolo": protocol_fingerprint(self.steps, self.protocol,
+                                                                           self.args.repetitions)})
         self.session.save()
         only = set(self.args.only.split(",")) if self.args.only else None
         print(f"Protocolo: {self.protocol.get('name', '')} · semilla {seed} · resultados en {self.session_dir}")
@@ -330,6 +345,10 @@ class Runner:
         done = self.session.done()
         for segment in build_schedule(self.steps, self.protocol, seed, self.args.repetitions):
             step = segment.get("step")
+            if segment["kind"] in ("tune", "calibrate"):
+                # [x] only repeats a run of the same block: the model and the
+                # gains were already made from the runs before this point
+                self.last_item = None
             if segment["kind"] == "tune":
                 if self.tuned_gains is None and (only is None or step.get("name") in only):
                     print(f"\n── Sintonización de ganancias con el gemelo ({step.get('name', 'TUNE')})")

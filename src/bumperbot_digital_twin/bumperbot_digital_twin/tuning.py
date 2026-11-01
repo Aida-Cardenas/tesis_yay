@@ -248,6 +248,8 @@ class TuningResult:
     per_scenario: list
     history: list = field(repr=False, default_factory=list)
     at_bounds: list = field(default_factory=list)
+    start: dict = field(default_factory=lambda: dict(DEFAULT_GAINS))
+    weights: CostWeights = field(default_factory=CostWeights)
 
 
 def tune(scenarios, real_model=NOMINAL_MODEL, twin_model=NOMINAL_MODEL, limits=Limits(),
@@ -287,7 +289,8 @@ def tune(scenarios, real_model=NOMINAL_MODEL, twin_model=NOMINAL_MODEL, limits=L
     at_bounds = [k for k in ("kx", "ky", "ktheta")
                  if abs(math.log(gains[k]) - math.log(BOUNDS[k][0])) < 0.01
                  or abs(math.log(gains[k]) - math.log(BOUNDS[k][1])) < 0.01]
-    return TuningResult(gains, best_cost, default_cost, len(history), per_scenario, history, at_bounds)
+    return TuningResult(gains, best_cost, default_cost, len(history), per_scenario, history, at_bounds,
+                        start, weights)
 
 
 def save_gains(path, gains, info=None):
