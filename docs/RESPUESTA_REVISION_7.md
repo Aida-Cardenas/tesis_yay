@@ -2,7 +2,7 @@
 
 Qué se hizo con cada punto de la séptima revisión (2 de noviembre de 2026, sobre `ca4b002`). La revisión no encontró nada alto ni medio y dice que nada impide la toma de datos; pidió un punto bajo antes de la sesión (HW-8) y dos de mantenimiento. Las respuestas anteriores están en [`RESPUESTA_REVISION_6.md`](RESPUESTA_REVISION_6.md) y las que esta enlaza.
 
-**Resultado de CI:** pendiente.
+**Resultado de CI:** corrida del 3 de noviembre de 2026 (commit `c1cbb4d`), todas las pruebas aprobadas al primer intento: los 30 gtest, todo pytest con la integración de dos robots de mentira, el sketch compilado para Uno y Nano, el robot con hardware simulado con Nav2 en `active [3]`, y Gazebo con Nav2. Los robots de mentira de CI no usan el protocolo serie, así que `protocolo_ci` no mide este cambio; con el error real dio M 24,7 → MC 1,4 cm, R 23,6 → RC 14,2 cm y RT 12,7 cm (ky 2,4). RC se repite de nuevo y RT sigue variando entre corridas (12,4-16,8 cm), como dice `RESPUESTA_REVISION_6`.
 
 | # | Observación | Estado | Cambio | Comprobación |
 |---|---|---|---|---|
