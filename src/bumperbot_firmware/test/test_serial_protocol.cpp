@@ -371,6 +371,69 @@ TEST(WheelIntegrator, BrakingDoesNotShowAReverseSpeed)
   }
 }
 
+// A short stop at an experiment speed: diff_drive ramps the command down at its
+// limit and the wheel follows it 50 ms later. Returns the lowest speed diff_drive
+// would see (position over its last 10 cycles) from the start of the stop on.
+// `phase` shifts the stop against the Arduino's readings; `use_command` passes
+// the command sent in each cycle to advance().
+double lowest_stop_speed(double from, double decel, double phase, bool use_command)
+{
+  const double stop_at = 0.5 + phase;
+  auto command = [&](double t) {return std::max(0.0, std::min(from, from - decel * (t - stop_at)));};
+  auto speed = [&](double t) {return command(t - 0.05);};
+  auto travel = [&](double t) {
+      double x = 0.0;
+      for (double u = 0.00025; u < t; u += 0.0005)
+      {
+        x += speed(u) * 0.0005;
+      }
+      return x;
+    };
+  WheelIntegrator w(0.3, 2.0 * M_PI / 770.0);
+  std::vector<double> shown;
+  double lowest = INFINITY;
+  for (int step = 1; step <= 150; ++step)
+  {
+    const double t = 0.01 * step;
+    if (step % 10 == 0)
+    {
+      const double average = std::round((travel(t) - travel(t - 0.1)) / 0.1 * 100.0) / 100.0;
+      feed(w, t, average, 0.0, static_cast<unsigned>(std::lround(travel(t) / (2.0 * M_PI / 770.0))) % 65536, 0);
+    }
+    else if (use_command)
+    {
+      w.advance(t, 0.01, command(t - 0.01), 0.0);
+    }
+    else
+    {
+      w.advance(t, 0.01);
+    }
+    shown.push_back(w.right_position());
+    if (step > 10 && t > stop_at)
+    {
+      lowest = std::min(lowest, (shown[step - 1] - shown[step - 11]) / 0.1);
+    }
+  }
+  return lowest;
+}
+
+TEST(WheelIntegrator, ShortStopsDoNotShowAReverseSpeed)
+{
+  // 4.5 rad/s is a line at 0.15 m/s, 1.5 rad/s a turn in place at 0.6 rad/s;
+  // 21 rad/s^2 is diff_drive's 0.7 m/s^2 and 34 rad/s^2 adds the turn limit
+  for (const double from : {4.5, 1.5})
+  {
+    for (const double decel : {21.0, 34.0})
+    {
+      for (int phase = 0; phase < 10; ++phase)
+      {
+        EXPECT_GE(lowest_stop_speed(from, decel, 0.01 * phase, true), -1e-9)
+          << from << " rad/s, " << decel << " rad/s^2, phase " << phase;
+      }
+    }
+  }
+}
+
 // Accelerating at a constant rate up to a cruise speed, the way diff_drive's
 // limits ramp the commands. Returns the lowest speed diff_drive would see
 // (position over its last 10 cycles) once the wheel cruises. `lost` is the

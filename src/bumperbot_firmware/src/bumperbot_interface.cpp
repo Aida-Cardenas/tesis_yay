@@ -145,6 +145,7 @@ CallbackReturn BumperbotInterface::on_activate(const rclcpp_lifecycle::State &)
   stop_sent_reported_ = false;
   port_failed_ = false;
   fault_seen_ = false;
+  sent_right_ = sent_left_ = 0.0;
   link_ = LinkAction::kWait;
   activated_at_ = clock_->now().seconds();
   last_line_at_ = 0.0;
@@ -310,7 +311,7 @@ hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
   // (not the wall clock, which can jump), and each reading sets it back to the
   // exact value of the encoder counters. If no valid reading arrives for 0.3 s
   // the speeds drop to zero and the wheels stop moving in the odometry.
-  const bool stale = wheels_.advance(now, period.seconds());
+  const bool stale = wheels_.advance(now, period.seconds(), sent_right_, sent_left_);
   const bool waiting = !wheels_.has_reading();
   const double quiet = waiting ? now - activated_at_ : wheels_.seconds_since_reading(now);
   link_ = link_action(!waiting, quiet, now - std::max(last_line_at_, activated_at_));
@@ -341,6 +342,12 @@ hardware_interface::return_type BumperbotInterface::read(const rclcpp::Time &,
     RCLCPP_INFO(rclcpp::get_logger("BumperbotInterface"), "Arduino data is back");
     stale_reported_ = false;
   }
+  if (fault_seen_)
+  {
+    RCLCPP_WARN_THROTTLE(rclcpp::get_logger("BumperbotInterface"), *clock_, 5000,
+                         "A wheel fault was seen: only zero speed is sent until real_robot.launch.py "
+                         "is restarted");
+  }
   // An Arduino that stays quiet without a port error is reset by reopening the port
   if (link_ == LinkAction::kReconnect && !port_failed_)
   {
@@ -368,6 +375,7 @@ hardware_interface::return_type BumperbotInterface::write(const rclcpp::Time &,
   // stops the motors by itself 0.5 s after the last command.
   if (port_failed_ || (link_ != LinkAction::kSend && link_ != LinkAction::kSendZero))
   {
+    sent_right_ = sent_left_ = 0.0;
     return hardware_interface::return_type::OK;
   }
   const bool send_zero = link_ == LinkAction::kSendZero || fault_seen_;
@@ -378,6 +386,9 @@ hardware_interface::return_type BumperbotInterface::write(const rclcpp::Time &,
   stop_sent_reported_ = send_zero;
   const double right = send_zero ? 0.0 : velocity_commands_.at(right_index_);
   const double left = send_zero ? 0.0 : velocity_commands_.at(left_index_);
+  // What was sent bounds the predicted wheel speed in the next read()
+  sent_right_ = right;
+  sent_left_ = left;
   const std::string message = format_wheel_command(right, left);
   try
   {

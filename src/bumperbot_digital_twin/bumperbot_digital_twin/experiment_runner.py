@@ -423,11 +423,14 @@ class Runner:
                 print("   No entendí la respuesta.")
                 continue
             self.discard_last()
-            result = "redo"
+            result = self.run_experiment(last, rep)
             while result == "redo":
+                print("   No hay una corrida anterior de esta ejecución que repetir.")
                 result = self.run_experiment(last, rep)
             if result == "quit":
                 return False
+            if result == "skip":
+                print(f"   {last['name']}_r{rep} queda fuera de la calibración y de la sesión.")
             self.last_item = (last, rep) if result == "ok" else None
         return True
 

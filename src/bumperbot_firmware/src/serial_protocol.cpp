@@ -7,6 +7,7 @@
 #include <initializer_list>
 #include <iomanip>
 #include <sstream>
+#include <utility>
 
 namespace bumperbot_firmware
 {
@@ -206,7 +207,7 @@ double WheelIntegrator::seconds_since_reading(double now_s) const
   return has_reading_ ? now_s - last_reading_s_ : INFINITY;
 }
 
-bool WheelIntegrator::advance(double now_s, double dt)
+bool WheelIntegrator::advance(double now_s, double dt, double right_cmd, double left_cmd)
 {
   if (stale(now_s))
   {
@@ -223,15 +224,25 @@ bool WheelIntegrator::advance(double now_s, double dt)
     // Speed predicted at the middle of this step. The measured speed belongs to
     // the middle of the Arduino's last period, half a period before the reading.
     // The trend may only take the speed down towards zero, never above the last
-    // measured speed or past zero: a prediction that falls short only delays the
+    // measured speed or past zero, and never past the speed last sent to the
+    // Arduino in the same direction: the wheel lags its command, so at a stop
+    // the command drops first. A prediction that falls short only delays the
     // position until the next reading, while one that runs ahead (the trend
-    // carried past the end of an acceleration) is corrected backwards, and
+    // carried past the end of an acceleration, or a stop shorter than two
+    // readings, where the trend is still too weak) is corrected backwards, and
     // diff_drive_controller sees that as a reverse speed.
     const double age = now_s - last_reading_s_ - 0.5 * dt + 0.5 * report_period_s_;
-    for (State * wheel : {&right_, &left_})
+    for (auto [wheel, cmd] : {std::pair{&right_, right_cmd}, std::pair{&left_, left_cmd}})
     {
       const double v = wheel->velocity;
-      wheel->position += std::clamp(v + wheel->accel * age, std::min(0.0, v), std::max(0.0, v)) * dt;
+      double low = std::min(0.0, v);
+      double high = std::max(0.0, v);
+      if (!std::isnan(cmd))
+      {
+        high = std::min(high, std::max(0.0, cmd));
+        low = std::max(low, std::min(0.0, cmd));
+      }
+      wheel->position += std::clamp(v + wheel->accel * age, low, high) * dt;
     }
   }
   return false;

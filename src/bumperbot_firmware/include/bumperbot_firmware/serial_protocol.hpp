@@ -1,6 +1,7 @@
 #ifndef BUMPERBOT_FIRMWARE__SERIAL_PROTOCOL_HPP
 #define BUMPERBOT_FIRMWARE__SERIAL_PROTOCOL_HPP
 
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -73,9 +74,10 @@ enum class ReadingResult
 // control corre más rápido: entre lecturas la posición avanza con la velocidad
 // prevista y en la lectura siguiente vuelve al valor exacto del contador. La
 // predicción es la última velocidad medida más su tendencia, pero la tendencia
-// solo puede bajarla hacia cero: al frenar sigue a la rueda, y al terminar de
-// acelerar no deja la posición por delante del contador, que al corregirse daría
-// un paso hacia atrás. Si pasa más de `timeout_s` sin una lectura completa
+// solo puede bajarla hacia cero, y nunca pasa de la última velocidad enviada al
+// Arduino en el mismo sentido. Así la posición nunca queda por delante del
+// contador (al terminar de acelerar, ni en una parada corta, donde la tendencia
+// todavía es débil), lo que al corregirse daría un paso hacia atrás. Si pasa más de `timeout_s` sin una lectura completa
 // (Arduino reiniciado, cable suelto, solo basura), las velocidades pasan a cero y
 // la posición queda en la última exacta: sin datos, la odometría se detiene en
 // lugar de inventar movimiento. Si el Arduino se reinicia sin que el puerto dé
@@ -93,8 +95,10 @@ public:
   // nueva referencia.
   void forget_reading();
   ReadingResult on_reading(double now_s, const WheelReading & reading);
-  // Avanza dt segundos. Devuelve true si los datos están vencidos.
-  bool advance(double now_s, double dt);
+  // Avanza dt segundos. Devuelve true si los datos están vencidos. right_cmd y
+  // left_cmd son las velocidades enviadas al Arduino en el ciclo anterior (NaN si
+  // no se conocen): la predicción no pasa de ellas en el mismo sentido.
+  bool advance(double now_s, double dt, double right_cmd = NAN, double left_cmd = NAN);
   bool stale(double now_s) const;
   bool has_reading() const { return has_reading_; }
   double seconds_since_reading(double now_s) const;

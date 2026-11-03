@@ -47,6 +47,8 @@ private:
   bool stop_sent_reported_ = false;
   bool port_failed_ = false;
   bool fault_seen_ = false;
+  double sent_right_ = 0.0;
+  double sent_left_ = 0.0;
   double last_line_at_ = 0.0;
   LinkAction link_ = LinkAction::kWait;
   double activated_at_ = 0.0;

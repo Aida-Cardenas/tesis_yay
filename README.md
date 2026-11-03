@@ -37,7 +37,8 @@ tesis-gemelo-digital-wmr/          <- esta carpeta ES el workspace (colcon build
 ├── docs/REVISION_GENERAL.md     revisión de errores y seguridad antes de cargar el código en el robot
 ├── docs/RESPUESTA_OPTIMIZACION.md  optimizaciones posteriores (odometría con contadores, sintonización)
 ├── docs/RESPUESTA_REVISION_5.md  ídem para la quinta revisión
-└── docs/RESPUESTA_REVISION_6.md  ídem para la sexta revisión
+├── docs/RESPUESTA_REVISION_6.md  ídem para la sexta revisión
+└── docs/RESPUESTA_REVISION_7.md  ídem para la séptima revisión
 ```
 
 ## Requisitos

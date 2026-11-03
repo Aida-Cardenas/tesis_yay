@@ -171,3 +171,28 @@ def test_the_last_run_before_calibration_can_be_redone(tmp_path, monkeypatch):
     r.last_item = (step, 3)
     monkeypatch.setattr("builtins.input", lambda prompt="": "q")
     assert not r.confirm_last_run({"name": "CAL"})
+
+
+def test_inside_the_redo_before_calibration_x_asks_again_and_s_says_what_happens(tmp_path, monkeypatch, capsys):
+    import types
+    import bumperbot_digital_twin.experiment_runner as er
+    monkeypatch.setattr(er.time, "sleep", lambda s: None)
+    r = make_runner(tmp_path)
+    r.args.auto = False
+    log = tmp_path / "E5.csv"
+    log.write_text("t\n")
+    r.configure = lambda **kw: types.SimpleNamespace(log_path=str(log), message="ok", clock_offset_ms=0.0,
+                                                    rtt_ms=10.0)
+    r.player = types.SimpleNamespace(play=lambda *a: 5.0, stop=lambda: None)
+    step = {"name": "E5", "description": "", "leader": "real", "feedback": True, "compensation": False,
+            "twin_model": False, "net_delay_ms": 0.0, "net_jitter_ms": 0.0, "net_loss": 0.0,
+            "pattern": "rotate", "linear_speed": 0.15, "angular_speed": 0.6, "distance": 1.0, "radius": 0.5,
+            "laps": 1, "pause": 0.5, "settle": 2.0}
+    r.session.record(experimento="E5", repeticion=3, registro=str(log), completa=True)
+    r.last_item = (step, 3)
+    answers = iter(["x", "x", "s"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    assert r.confirm_last_run({"name": "CAL"})
+    out = capsys.readouterr().out
+    assert "No hay una corrida anterior" in out and "queda fuera de la calibración" in out
+    assert r.last_item is None and r.session.good_runs() == []
