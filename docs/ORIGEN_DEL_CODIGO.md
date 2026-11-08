@@ -79,7 +79,7 @@ Algunos de estos archivos se quitaron en la limpieza (ver arriba); la tabla se d
 
 | Sección de la tesis | Dónde está en el código | Estado |
 |---|---|---|
-| III.3.1 Modelo virtual (URDF/Xacro) | `bumperbot_description/urdf/*.xacro`, `meshes/` | Listo: las mallas y medidas corresponden al diseño del prototipo en Fusion 360 |
+| III.3.1 Modelo virtual (URDF/Xacro) | `bumperbot_description/urdf/*.xacro`, `meshes/` | Listo: las mallas y medidas son las del diseño de Brandi, que es el que se fabricó tal cual |
 | III.3.2 Entorno en Gazebo | `bumperbot_description/worlds/`, `launch/gazebo.launch.py` | Listo |
 | III.3.3 Control y odometría | `bumperbot_controller` (+ `bumperbot_firmware` en el robot real) | Listo |
 | III.3.4 Comunicación bidireccional | `bumperbot_digital_twin` | Aporte propio (ver [`GEMELO_DIGITAL.md`](GEMELO_DIGITAL.md)) |
