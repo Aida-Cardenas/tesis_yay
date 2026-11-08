@@ -298,15 +298,15 @@ Punto abierto de la sintonización. En la simulación, ky casi no cambia el cost
 
 El modelo identificado a partir de M fue K = 0,86, τ = 0,30 s y L = 0,088 s en la velocidad lineal, y K = 0,85, τ = 0,29 s y L = 0,091 s en la angular (R² de la respuesta simulada = 0,999 en ambas), cercano a los valores con que se configuró el robot de mentira. Entre corridas, el retardo identificado cae a ambos lados de 0,1 s, lo que se parece más a ruido de cuantización (el robot de mentira avanza con pasos de Euler a 50 Hz y el registro muestrea a 20 Hz) que a un atraso sistemático.
 
-**Navegación con vista previa** (navegadores de mentira, recinto `arena`):
+**Navegación con vista previa** (navegadores de mentira, recinto `arena` de 3,0 × 2,0 m; corrida del 8 de noviembre de 2026, commit `85952dd`):
 
 | Meta | Veredicto del gemelo | Tiempo gemelo / real | Desviación media / máxima entre rutas | Error final del real |
 |---|---|---|---|---|
-| N1 (1,2; 0) | Aprobada | 7,9 s / 6,7 s | 0,0 / 0,2 cm | 4,7 cm |
-| N2 (1,0; 0,6) | Aprobada | 7,7 s / 6,1 s | 2,0 / 4,3 cm | 4,5 cm |
-| N3 (0,3; −0,6) | Aprobada | 13,3 s / 11,2 s | 2,5 / 4,8 cm | 4,5 cm |
-| N4 (0; 0) | Aprobada | 8,0 s / 7,2 s | 2,0 / 8,0 cm | 4,4 cm |
-| X1 pegada a la pared | Rechazada: pasó a 18 cm (mínimo 20) | 11,8 s / — | — | el real no se movió |
+| N1 (1,5; 0) | Aprobada | 9,6 s / 8,2 s | 0,0 / 0,1 cm | 4,7 cm |
+| N2 (1,2; 1,0) | Aprobada | 9,9 s / 8,1 s | 1,7 / 4,1 cm | 4,4 cm |
+| N3 (−0,4; 0,8) | Aprobada | 12,9 s / 10,6 s | 0,5 / 1,2 cm | 4,5 cm |
+| N4 (0; 0) | Aprobada | 10,8 s / 8,3 s | 4,6 / 8,9 cm | 4,4 cm |
+| X1 pegada a la pared | Rechazada: pasó a 17 cm (mínimo 20) | 13,1 s / — | — | el real no se movió |
 | X2 fuera del recinto | Rechazada: no hay camino | 0,1 s / — | — | el real no se movió |
 
 **Vista previa con Nav2 de verdad**: el gemelo en Gazebo (AMCL en el mapa `arena` y Nav2) aprobó una meta a (1,0; 0,3) m en 8,7 s; el robot real de mentira la ejecutó en 6,8 s con una desviación media de 4,4 cm respecto a la ruta prevista (máxima 8,6 cm).
