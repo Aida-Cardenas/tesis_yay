@@ -4,6 +4,12 @@
 Publica velocidades en key_vel, la entrada de teclado de twist_mux, así que
 funciona igual en el robot real, en Gazebo o en fake_robot. Al terminar publica
 ceros y se cierra solo. El joystick (prioridad 99) siempre puede interrumpirlo.
+
+Con `duration` > 0 no hace un recorrido: publica linear_speed y angular_speed
+durante esos segundos y después cero (Prueba 3, movimiento por comando):
+
+    ros2 run bumperbot_digital_twin scripted_driver --ros-args -p duration:=5.0 \
+        -p linear_speed:=0.1 -p angular_speed:=0.0
 """
 import time
 
@@ -27,7 +33,12 @@ class ScriptedDriver(Node):
         pause = self.declare_parameter("pause", 1.0).value
         self.start_delay = self.declare_parameter("start_delay", 3.0).value
         topic = self.declare_parameter("topic", "key_vel").value
-        self.segments = build_segments(pattern, v, w, distance, radius, laps, pause)
+        duration = self.declare_parameter("duration", 0.0).value
+        if duration > 0.0:
+            pattern = "constante"
+            self.segments = [(duration, v, w)]
+        else:
+            self.segments = build_segments(pattern, v, w, distance, radius, laps, pause)
         self.total = sum(s[0] for s in self.segments)
         self.pub = self.create_publisher(Twist, topic, 10)
         self.t0 = None
