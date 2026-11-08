@@ -103,7 +103,7 @@ Los eventos (`bumperbot_msgs/TwinAnomaly`, con inicio y fin) se publican en `/di
 
 El puente reenvía el `/scan` del robot real al dominio del gemelo como `/digital_twin/real_scan` (en RViz se ve en rojo sobre el del gemelo) y, cuando ambos robots están quietos, compara los dos barridos ángulo a ángulo (1°): error absoluto medio, RMSE, sesgo, percentil 95 y coincidencia de visibilidad (si ambos ven o no ven algo en cada ángulo). Resultado en `/digital_twin/scan_comparison` y en `_scan.csv`.
 
-Para que la comparación tenga sentido el entorno debe ser el mismo. `twin_calibrate arena --bounds XMIN XMAX YMIN YMAX [--obstacle X Y ANCHO LARGO]` genera un mundo de Gazebo con un recinto rectangular igual al que se arme con cajas o tablas en el laboratorio (`world_name:=arena`).
+Para que la comparación tenga sentido el entorno debe ser el mismo. `twin_calibrate arena --bounds XMIN XMAX YMIN YMAX [--obstacle X Y ANCHO LARGO]` genera un mundo de Gazebo con un recinto rectangular igual al que se arme con cajas o tablas en el laboratorio (`world_name:=arena`). El mundo `arena` incluido mide 3,0 × 2,0 m por dentro (x de −1,0 a 2,0 m e y de −0,5 a 1,5 m, desde la marca de salida): los recorridos de los protocolos (cuadrado de 1 m y círculo de 0,5 m de radio, los dos girando a la izquierda, y la recta de 1,5 m de A1) quedan a 0,5 m o más de las paredes, más que el error real de las corridas con 300 ms de retardo.
 
 ## 7. Panel de control
 

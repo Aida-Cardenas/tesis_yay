@@ -11,7 +11,7 @@ export ROS_LOCALHOST_ONLY=1
 rm -rf /tmp/twin_gz_logs /tmp/twin_gz_res /tmp/twin_gz_nav_logs /tmp/twin_gz_nav_res
 mkdir -p /tmp/twin_gz_logs
 setsid ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake twin_mode:=gazebo gui:=false rviz:=false \
-  world_name:=arena arena:=[-0.5,2.0,-1.0,1.0] \
+  world_name:=arena arena:=[-1.0,2.0,-0.5,1.5] \
   leader:=real driver:=square driver_start_delay:=40.0 linear_speed:=0.2 distance:=0.8 \
   log_dir:=/tmp/twin_gz_logs log_tag:=gazebo > /tmp/twin_gz.log 2>&1 &
 PID=$!
@@ -47,7 +47,7 @@ fi
 # Navegación con vista previa: Nav2 + AMCL del gemelo en Gazebo (mapa arena) y robot real de mentira
 mkdir -p /tmp/twin_gz_nav_logs
 setsid ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake twin_mode:=gazebo gui:=false rviz:=false \
-  world_name:=arena map_name:=arena arena:=[-0.5,2.0,-1.0,1.0] \
+  world_name:=arena map_name:=arena arena:=[-1.0,2.0,-0.5,1.5] \
   log_dir:=/tmp/twin_gz_nav_logs log_tag:=gznav > /tmp/twin_gz_nav.log 2>&1 &
 NPID=$!
 sleep 90

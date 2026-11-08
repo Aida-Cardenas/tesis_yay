@@ -187,7 +187,7 @@ def test_experiment_protocol(tmp_path):
 def test_navigation_preview(tmp_path):
     rd, td = 91, 92
     out_dir = tmp_path / "navegacion"
-    proc, out = start(twin_launch(tmp_path / "logs", rd, td, "arena:=[-0.5,2.0,-1.0,1.0]"), tmp_path / "launch.log")
+    proc, out = start(twin_launch(tmp_path / "logs", rd, td, "arena:=[-1.0,2.0,-0.5,1.5]"), tmp_path / "launch.log")
     try:
         time.sleep(6)
         nav = subprocess.run(
