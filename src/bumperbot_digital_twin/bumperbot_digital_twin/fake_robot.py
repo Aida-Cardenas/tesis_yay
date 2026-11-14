@@ -12,6 +12,9 @@ retardo, ruido) y fallos para probar el detector de anomalías:
 - stall: el robot queda trabado (ni las ruedas ni el robot se mueven),
 - slip: las ruedas giran pero el robot no rota (la IMU no lo registra),
 - push: alguien empuja el robot sin que haya comando.
+
+El servicio ~/return_to_start lo lleva a la marca de salida (la pose verdadera, no la
+odometría), como cuando alguien coloca el robot físico antes de una corrida.
 """
 import math
 import random
@@ -26,6 +29,7 @@ from rclpy.qos import qos_profile_sensor_data
 from geometry_msgs.msg import Twist, TwistStamped, TransformStamped
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu, LaserScan
+from std_srvs.srv import Trigger
 from tf2_ros import TransformBroadcaster
 
 from bumperbot_digital_twin.geometry import Pose2D, integrate_unicycle
@@ -81,10 +85,21 @@ class FakeRobot(Node):
         self.last = time.monotonic()
         self.fault_t0 = None
         self.add_on_set_parameters_callback(self._on_params)
+        self.create_service(Trigger, "~/return_to_start", self._return_to_start)
         self.create_timer(1.0 / self.rate, self._step)
         if len(self.arena) == 4:
             self.scan_angles = np.arange(SCAN_BEAMS) * 2.0 * math.pi / SCAN_BEAMS
             self.create_timer(1.0 / self.scan_rate, self._scan)
+
+    def _return_to_start(self, request, response):
+        """Como si alguien colocara el robot en la marca: cambia la pose verdadera, no la odometría."""
+        self.true_pose = Pose2D()
+        self.v = self.w = 0.0
+        self.delayed.clear()
+        self.applied = (0.0, 0.0)
+        response.success = True
+        response.message = "En la marca de salida"
+        return response
 
     def _input(self, topic, prio, msg):
         self.inputs[topic] = (prio, time.monotonic(), msg.linear.x, msg.angular.z)

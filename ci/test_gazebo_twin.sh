@@ -44,6 +44,45 @@ else
   annotate warning "Log Gazebo (errores)" "$(grep -iE 'error|fail|exception|died' /tmp/twin_gz.log | tail -n 40)"
 fi
 
+# Antes de cada corrida el gemelo vuelve a la marca: tres rectas de 1 m en el mismo
+# sentido (sin volver, el gemelo chocaría con la pared este en la segunda) y el
+# LiDAR del gemelo debe coincidir con el del robot de mentira en todas.
+rm -rf /tmp/twin_gz_mark_logs /tmp/twin_gz_mark_res
+mkdir -p /tmp/twin_gz_mark_logs
+cat > /tmp/protocolo_marca.yaml <<'YAML'
+name: ci_marca
+defaults:
+  repetitions: 3
+  linear_speed: 0.2
+  distance: 1.0
+  settle: 2.0
+experiments:
+  - {name: LINEA, description: Tres rectas de 1 m en el mismo sentido, pattern: line}
+YAML
+setsid ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake twin_mode:=gazebo gui:=false rviz:=false \
+  world_name:=arena arena:=[-1.0,2.0,-0.5,1.5] \
+  log_dir:=/tmp/twin_gz_mark_logs > /tmp/twin_gz_mark.log 2>&1 &
+MPID=$!
+sleep 45
+timeout 300 ros2 run bumperbot_digital_twin twin_experiment /tmp/protocolo_marca.yaml --auto --no-plots \
+  --out /tmp/twin_gz_mark_res > /tmp/twin_gz_mark_run.txt 2>&1
+MARK=$?
+stop_group $MPID
+MARK_INFO="$(grep -E 'marca|LINEA' /tmp/twin_gz_mark_run.txt | head -n 20)"$'\n'
+if [ $MARK -eq 0 ] && python3 -c "
+import json,sys
+t=json.load(open('/tmp/twin_gz_mark_res/informe.json'))['experimentos']['LINEA']['lidar_mae']
+runs=[r for r in json.load(open('/tmp/twin_gz_mark_res/sesion.json'))['corridas'] if r['completa']]
+print('MAE del LiDAR [m]:', t, '· gemelo en la marca:', [r.get('gemelo_en_marca') for r in runs])
+sys.exit(0 if t[2] == 3 and t[0] < 0.06 and len(runs) == 3 and all(r.get('gemelo_en_marca') for r in runs) else 1)
+" >> /tmp/twin_gz_mark_check.txt 2>&1; then
+  annotate notice "Gemelo de vuelta a la marca en cada corrida" "${MARK_INFO}$(cat /tmp/twin_gz_mark_check.txt)"
+else
+  annotate warning "Gemelo de vuelta a la marca en cada corrida" \
+    "${MARK_INFO}$(cat /tmp/twin_gz_mark_check.txt 2>/dev/null)"$'\n'"$(tail -n 30 /tmp/twin_gz_mark_run.txt)"
+  FAIL=1
+fi
+
 # Navegación con vista previa: Nav2 + AMCL del gemelo en Gazebo (mapa arena) y robot real de mentira
 mkdir -p /tmp/twin_gz_nav_logs
 setsid ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake twin_mode:=gazebo gui:=false rviz:=false \

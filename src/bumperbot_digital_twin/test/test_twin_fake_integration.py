@@ -165,6 +165,10 @@ def test_experiment_protocol(tmp_path):
     runs = [r for r in json.load(open(out_dir / "sesion.json"))["corridas"] if r["completa"]]
     assert runs and all(r["desfase_relojes_ms"] is not None and r["rtt_ms"] is not None for r in runs), \
         "sesion.json sin diferencia de relojes o RTT por corrida"
+    assert all(r.get("gemelo_en_marca") for r in runs), "El gemelo no volvió a la marca en todas las corridas"
+    lidar = {e: v["lidar_mae"][0] for e, v in table.items() if v.get("lidar_mae") and v["lidar_mae"][2]}
+    report("protocolo_ci MAE del LiDAR: " + " ".join(f"{e}={x * 100:.1f}cm" for e, x in sorted(lidar.items())))
+    assert lidar and max(lidar.values()) < 0.05, f"El LiDAR del gemelo no coincide con el del real: {lidar}"
 
     def m(exp, key="rmse"):
         return table[exp][key][0]

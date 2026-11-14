@@ -6,10 +6,11 @@
     ros2 run bumperbot_digital_twin twin_experiment mi_protocolo.yaml --only E1,E3
 
 Lee un protocolo YAML (ver config/protocolo_*.yaml), y para cada experimento y
-repetición: configura el puente (líder, corrección, compensación, modelo, red),
-realinea, abre un registro con etiqueta <experimento>_r<n>, reproduce el recorrido
-en el robot líder y espera a que el seguidor se detenga. Puede calibrar el modelo
-del gemelo a mitad del protocolo. Al final genera el informe estadístico.
+repetición: lleva el gemelo a la marca de salida (start_pose.py), configura el
+puente (líder, corrección, compensación, modelo, red), realinea, abre un registro
+con etiqueta <experimento>_r<n>, reproduce el recorrido en el robot líder y espera
+a que el seguidor se detenga. Puede calibrar el modelo del gemelo a mitad del
+protocolo. Al final genera el informe estadístico.
 
 Las condiciones que se comparan se intercalan (ver session.py) y cada corrida
 queda anotada en <carpeta de la sesión>/sesion.json. Una sesión interrumpida se
@@ -31,6 +32,7 @@ from bumperbot_msgs.srv import TwinConfigure
 from bumperbot_digital_twin.calibrate import fit_channel, plot_fit, read_identification_data
 from bumperbot_digital_twin.dynamics import TwinModel
 from bumperbot_digital_twin.report import build_report, resolve_protocol_path
+from bumperbot_digital_twin.start_pose import StartReset
 from bumperbot_digital_twin.session import (SESSION_FILE, RunQueue, Session, build_schedule, parse_answer,
                                             protocol_fingerprint)
 from bumperbot_digital_twin.tuning import DEFAULT_GAINS, load_gains_file
@@ -109,6 +111,8 @@ class Runner:
         self.dual = DualDomain("twin_experiment", args.real_domain, args.twin_domain)
         self.client = self.dual.nodes["twin"].create_client(TwinConfigure, "/digital_twin/configure")
         self.player = TrajectoryPlayer(self.dual)
+        self.starter = None if getattr(args, "no_return", False) else StartReset(
+            self.dual, getattr(args, "world", "arena"), getattr(args, "twin_name", "bumperbot"))
 
     def configure(self, **kwargs):
         req = TwinConfigure.Request()
@@ -167,6 +171,7 @@ class Runner:
             return "skip"
         if choice == "x":
             return "redo"
+        twin_at_start = self.return_to_start()
         started = datetime.now().isoformat(timespec="seconds")
         res = self.configure(
             leader=step["leader"], feedback=step["feedback"], compensation=step["compensation"],
@@ -175,7 +180,7 @@ class Runner:
             gains=self.gains_for(step), align=True, new_log=True, log_tag=tag)
         run = {"experimento": step["name"], "repeticion": rep, "registro": res.log_path, "inicio": started,
                "voltaje": volts, "desfase_relojes_ms": _finite(getattr(res, "clock_offset_ms", math.nan)),
-               "completa": False}
+               "completa": False, "gemelo_en_marca": twin_at_start}
         print(f"   {res.message}")
         if not res.log_path:
             print("   ADVERTENCIA: el puente no está registrando (log_enabled=false): la corrida no contará.")
@@ -208,6 +213,15 @@ class Runner:
         if res.log_path:
             self.logs.setdefault(step["name"], []).append(res.log_path)
         return "ok"
+
+    def return_to_start(self):
+        """Lleva los robots a la marca antes de alinear (ver start_pose.py)."""
+        if getattr(self, "starter", None) is None:
+            return None
+        ok, message = self.starter.run()
+        print(f"   {message}")
+        time.sleep(self.starter.settle_s)
+        return ok
 
     def gains_for(self, step):
         choice = step.get("gains")
@@ -479,6 +493,10 @@ def main(argv=None):
                         help="Diferencia de relojes máxima en ms (por defecto 50)")
     parser.add_argument("--ignore-clock", action="store_true", help="Seguir aunque los relojes difieran")
     parser.add_argument("--no-plots", action="store_true")
+    parser.add_argument("--world", default="arena", help="Mundo de Gazebo del gemelo (para llevarlo a la marca)")
+    parser.add_argument("--twin-name", default="bumperbot", help="Nombre del modelo del gemelo en Gazebo")
+    parser.add_argument("--no-return", action="store_true",
+                        help="No llevar el gemelo (ni los robots de mentira) a la marca antes de cada corrida")
     args = parser.parse_args(argv)
     protocol, steps = load_protocol(resolve_protocol_path(args.protocol))
     try:
