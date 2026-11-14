@@ -328,7 +328,7 @@ La latencia de red en estas pruebas es local (menos de 2 ms); con la Raspberry P
 - La diferencia de relojes se estima con la misma suposición (sin red emulada) y se acepta hasta 50 ms. El error real se corrige con ella, así que lo que queda es el error de la estimación, no la diferencia; con chrony funcionando la diferencia es de pocos milisegundos.
 - La vista previa supone que el gemelo y el robot real están localizados en el mismo mapa y en el mismo recinto; si el entorno real cambia (alguien pone una caja), el gemelo no lo sabe.
 - La sintonización es tan buena como el modelo identificado; conviene validarla siempre con un experimento (`G0T`, `L250RT`).
-- Los LiDAR solo se comparan cuando el error de posición es menor que `scan_sync_tolerance` (5 cm) y el de rumbo menor que `scan_heading_tolerance` (2°), para no medir desalineación en vez del modelo del sensor.
+- Los LiDAR solo se comparan cuando el error de posición es menor que `scan_sync_tolerance` (5 cm) y el de rumbo menor que `scan_heading_tolerance` (2°), para no medir desalineación en vez del modelo del sensor. Se usa el error medido, sin la predicción de la compensación: con el predictor de Smith el error previsto puede ser pequeño mientras los robots todavía están separados (en CI, RC daba 27 cm de MAE).
 - La figura *error vs latencia* solo usa experimentos que difieren únicamente en el retardo (mismo líder, con realimentación, ganancias por defecto, sin fallas inyectadas) y una sola métrica.
 - Si la calibración no encuentra corridas, no se instala ningún modelo y se omiten los experimentos que lo necesitan (`E7`, `TUNE`, `G0T`…).
 - Todo lo anterior está probado con robots simulados; los valores con el robot físico salen de correr `protocolo_real` y `twin_navigate`.

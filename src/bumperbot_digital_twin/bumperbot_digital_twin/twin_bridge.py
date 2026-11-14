@@ -881,7 +881,9 @@ class TwinBridge:
         for side in self.sides.values():
             side.status_pub.publish(status)
 
-        self._compare_scans(now, pos_error, err[2] if ref is not None else NAN)
+        # The scans are measured, so they are compared when the measured poses agree:
+        # with compensation, the predicted error can be small while the robots are apart
+        self._compare_scans(now, pos_error_raw, err_raw[2] if ref is not None else NAN)
 
         if self.T_real_to_twin is not None and self.tick_count % 2 == 0:
             for name, side in self.sides.items():
