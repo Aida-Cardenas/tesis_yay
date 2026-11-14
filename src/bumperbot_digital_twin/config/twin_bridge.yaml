@@ -44,8 +44,9 @@ twin_bridge:
     scan_compare_rate: 2.0
     scan_sync_tolerance: 0.05
     scan_heading_tolerance: 0.035
-    scan_max_linear: 0.05
-    scan_max_angular: 0.3
+    scan_max_linear: 0.02
+    scan_max_angular: 0.05
+    scan_still_time: 1.0
 
     latency_alert_ms: 250.0
 

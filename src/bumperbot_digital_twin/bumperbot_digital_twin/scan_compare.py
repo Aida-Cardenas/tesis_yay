@@ -178,3 +178,24 @@ def scan_gate(pos_err, heading_err, speeds, p):
     if any(abs(v) > p["scan_max_linear"] or abs(w) > p["scan_max_angular"] for v, w in speeds):
         return "movimiento"
     return None
+
+
+class StillTimer:
+    """Cuánto tiempo seguido llevan los dos robots quietos.
+
+    Un barrido llega hasta 0,5 s después de tomado y, con red emulada, la
+    velocidad del robot real llega con su retardo: un robot que todavía gira
+    despacio puede parecer quieto. Los LiDAR solo se comparan después de un rato
+    de quietud real (scan_still_time).
+    """
+
+    def __init__(self):
+        self.since = None
+
+    def update(self, now, still):
+        if not still:
+            self.since = None
+            return 0.0
+        if self.since is None:
+            self.since = now
+        return now - self.since

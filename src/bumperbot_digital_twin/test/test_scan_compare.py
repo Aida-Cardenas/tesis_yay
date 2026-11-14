@@ -65,3 +65,14 @@ def test_scans_are_not_compared_when_apart_or_moving():
     from bumperbot_digital_twin.scan_compare import scan_gate
     assert scan_gate(0.20, 0.0, [(0.0, 0.0)] * 2, GATE) == "posición"
     assert scan_gate(0.01, 0.0, [(0.0, 0.0), (0.0, 0.5)], GATE) == "movimiento"
+
+
+def test_scans_wait_until_both_robots_have_been_still_for_a_while():
+    from bumperbot_digital_twin.scan_compare import StillTimer
+    timer = StillTimer()
+    assert timer.update(0.0, False) == 0.0
+    assert timer.update(0.5, True) == 0.0
+    assert timer.update(1.2, True) == 0.7
+    assert timer.update(1.3, False) == 0.0
+    assert timer.update(1.4, True) == 0.0
+    assert timer.update(2.5, True) > 1.0

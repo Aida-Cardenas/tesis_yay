@@ -71,7 +71,7 @@ from bumperbot_digital_twin.geometry import (
 )
 from bumperbot_digital_twin.netem import NetworkEmulator
 from bumperbot_digital_twin.ros_util import SpinThread, shutdown_all
-from bumperbot_digital_twin.scan_compare import bin_scan, compare_scans, scan_gate
+from bumperbot_digital_twin.scan_compare import StillTimer, bin_scan, compare_scans, scan_gate
 from bumperbot_digital_twin.session import safe_log_tag
 from bumperbot_digital_twin.tuning import load_gains_file
 
@@ -136,8 +136,9 @@ DEFAULTS = {
     "scan_compare_rate": 2.0,
     "scan_sync_tolerance": 0.05,
     "scan_heading_tolerance": 0.035,
-    "scan_max_linear": 0.05,
-    "scan_max_angular": 0.3,
+    "scan_max_linear": 0.02,
+    "scan_max_angular": 0.05,
+    "scan_still_time": 1.0,
     "latency_alert_ms": 250.0,
     "log_enabled": True,
     "log_dir": "~/twin_logs",
@@ -295,6 +296,7 @@ class TwinBridge:
         self.active_anomalies = {}
         self.comm_conditions = {"latencia_alta": Hysteresis(1.0, 1.0), "perdida_datos": Hysteresis(0.5, 0.5)}
         self.last_scan_cmp = 0.0
+        self.still_timer = StillTimer()
         self.net_in = NetworkEmulator(seed=self.p["net_seed"])
         self.net_out = NetworkEmulator(seed=self.p["net_seed"] + 1)
         self._configure_network(self.p["net_delay_ms"], self.p["net_jitter_ms"], self.p["net_loss"])
@@ -583,12 +585,15 @@ class TwinBridge:
         twin.real_scan_pub.publish(out)
 
     def _compare_scans(self, now, pos_err, heading_err):
+        r, t = self.sides["real"].state, self.sides["twin"].state
+        speeds = [(s.v, s.w) for s in (r, t)]
+        still_for = self.still_timer.update(now, all(
+            abs(v) <= self.p["scan_max_linear"] and abs(w) <= self.p["scan_max_angular"] for v, w in speeds))
         if not self.p["scan_compare"] or now - self.last_scan_cmp < 1.0 / self.p["scan_compare_rate"]:
             return
-        r, t = self.sides["real"].state, self.sides["twin"].state
         if r.scan is None or t.scan is None or now - r.scan_rx > 0.5 or now - t.scan_rx > 0.5:
             return
-        if scan_gate(pos_err, heading_err, [(s.v, s.w) for s in (r, t)], self.p) is not None:
+        if scan_gate(pos_err, heading_err, speeds, self.p) is not None or still_for < self.p["scan_still_time"]:
             return
         self.last_scan_cmp = now
         res = compare_scans(r.scan, t.scan)
