@@ -51,7 +51,10 @@ LINE="export FASTRTPS_DEFAULT_PROFILES_FILE=$XML"
 if ! grep -qF "$LINE" "$HOME/.bashrc"; then
   echo "$LINE" >> "$HOME/.bashrc"
 fi
-ros2 daemon stop > /dev/null 2>&1 || true
+# El daemon de la línea de comandos (uno por dominio) se queda con la
+# configuración vieja y a veces queda trabado: «ros2 daemon stop» se cuelga
+# esperándolo, así que se cierra directo. El próximo comando ros2 abre uno nuevo.
+pkill -f _ros2_daemon || true
 echo ">> ROS buscará al otro equipo por IP: PC $PC_IP, Raspberry Pi $PI_IP ($XML)"
 echo ">> Abre una pestaña nueva o corre: source ~/.bashrc"
 echo ">> Si cambia alguna IP, vuelve a correr este script con las IP nuevas en los dos equipos."
