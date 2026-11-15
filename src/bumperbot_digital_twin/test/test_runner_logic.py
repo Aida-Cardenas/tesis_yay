@@ -72,7 +72,9 @@ def test_each_run_closes_its_log_after_settling(tmp_path, monkeypatch):
             "pattern": "line", "linear_speed": 0.15, "angular_speed": 0.6, "distance": 1.0, "radius": 0.5,
             "laps": 1, "pause": 0.5, "settle": 2.0}
     assert r.run_experiment(step, 1) == "ok"
-    assert calls[0].get("new_log") and calls[1].get("play") and calls[-1] == {"close_log": True}
+    assert calls[0] == {"pause_sync": True}
+    assert calls[1].get("new_log") and calls[1].get("resume_sync") and calls[2].get("play")
+    assert calls[-1] == {"close_log": True}
     run = r.session.good_runs()[0]
     assert run["registro"] == str(tmp_path / "x.csv")
     assert run["desfase_relojes_ms"] == 1.5 and run["rtt_ms"] == 250.0
@@ -149,6 +151,8 @@ def test_the_last_run_before_calibration_can_be_redone(tmp_path, monkeypatch):
 
     def configure(**kw):
         r.calls.append(kw)
+        if kw.get("pause_sync"):
+            return types.SimpleNamespace(log_path="", message="sincronización en pausa")
         path = r.current if kw.get("close_log") else next(logs)
         r.current = path
         open(path, "w").close()
@@ -217,7 +221,12 @@ def test_the_twin_goes_back_to_the_mark_before_aligning(tmp_path, monkeypatch):
             return self.ok, "gemelo en la marca (Gazebo)" if self.ok else "ADVERTENCIA: no pude"
 
     def configure(**kw):
-        order.append("alinea" if kw.get("align") else "otro")
+        if kw.get("pause_sync"):
+            order.append("pausa")
+        elif kw.get("align"):
+            order.append("alinea y reanuda" if kw.get("resume_sync") else "alinea")
+        else:
+            order.append("otro")
         return types.SimpleNamespace(log_path=str(tmp_path / "z.csv"), message="ok", clock_offset_ms=0.0,
                                      rtt_ms=1.0)
 
@@ -229,8 +238,41 @@ def test_the_twin_goes_back_to_the_mark_before_aligning(tmp_path, monkeypatch):
             "laps": 1, "pause": 0.5, "settle": 2.0}
     r.starter = Starter(True)
     assert r.run_experiment(step, 1) == "ok"
-    assert order[:2] == ["marca", "alinea"]
+    assert order[:3] == ["pausa", "marca", "alinea y reanuda"]
     r.starter = Starter(False)
     assert r.run_experiment(step, 2) == "ok"
     runs = r.session.good_runs()
     assert [run["gemelo_en_marca"] for run in runs] == [True, False]
+
+
+def test_the_sync_stops_before_the_robot_is_placed_and_waits_for_the_network(tmp_path, monkeypatch):
+    import types
+    import bumperbot_digital_twin.experiment_runner as er
+    events = []
+    monkeypatch.setattr(er.time, "sleep", lambda s: events.append(("espera", round(s, 3))))
+    r = make_runner(tmp_path)
+    r.args.auto = False
+    (tmp_path / "z.csv").write_text("t\n")
+
+    def configure(**kw):
+        events.append(("pausa",) if kw.get("pause_sync") else ("configura", bool(kw.get("resume_sync"))))
+        return types.SimpleNamespace(log_path=str(tmp_path / "z.csv"), message="ok", clock_offset_ms=0.0,
+                                     rtt_ms=1.0)
+
+    def ask(text):
+        events.append(("pregunta",))
+        return "c", None
+
+    r.configure = configure
+    r.ask = ask
+    r.starter = None
+    r.player = types.SimpleNamespace(play=lambda *a: 5.0)
+    step = {"name": "R300", "description": "", "leader": "twin", "feedback": True, "compensation": False,
+            "twin_model": False, "net_delay_ms": 300.0, "net_jitter_ms": 0.0, "net_loss": 0.0,
+            "pattern": "square", "linear_speed": 0.15, "angular_speed": 0.6, "distance": 1.0, "radius": 0.5,
+            "laps": 1, "pause": 0.5, "settle": 2.0}
+    assert r.run_experiment(step, 1) == "ok"
+    assert events[:4] == [("pausa",), ("espera", er.STOP_WAIT_S), ("pregunta",), ("configura", True)]
+    events.clear()
+    assert r.run_experiment(step, 2) == "ok"
+    assert events[:2] == [("pausa",), ("espera", round(er.STOP_WAIT_S + 0.3, 3))]

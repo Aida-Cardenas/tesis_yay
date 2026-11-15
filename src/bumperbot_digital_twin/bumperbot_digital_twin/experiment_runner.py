@@ -38,6 +38,8 @@ from bumperbot_digital_twin.session import (SESSION_FILE, RunQueue, Session, bui
 from bumperbot_digital_twin.tuning import DEFAULT_GAINS, load_gains_file
 from bumperbot_digital_twin.ros_util import DualDomain, TrajectoryPlayer
 
+STOP_WAIT_S = 1.0
+
 DEFAULTS = {
     "repetitions": 3,
     "leader": "real",
@@ -164,6 +166,7 @@ class Runner:
             prompt += f"\n   {step['instructions']}"
         if not self.args.auto:
             prompt += "\n   Coloca el robot en la marca de salida."
+        self.hold_still()
         choice, volts = self.ask(prompt)
         if choice == "q":
             return "quit"
@@ -177,7 +180,8 @@ class Runner:
             leader=step["leader"], feedback=step["feedback"], compensation=step["compensation"],
             twin_model=step["twin_model"], net_delay_ms=step["net_delay_ms"],
             net_jitter_ms=step["net_jitter_ms"], net_loss=step["net_loss"],
-            gains=self.gains_for(step), align=True, new_log=True, log_tag=tag)
+            gains=self.gains_for(step), align=True, new_log=True, log_tag=tag, resume_sync=True)
+        self.last_delay_s = (float(step.get("net_delay_ms") or 0.0) + float(step.get("net_jitter_ms") or 0.0)) / 1000.0
         run = {"experimento": step["name"], "repeticion": rep, "registro": res.log_path, "inicio": started,
                "voltaje": volts, "desfase_relojes_ms": _finite(getattr(res, "clock_offset_ms", math.nan)),
                "completa": False, "gemelo_en_marca": twin_at_start}
@@ -213,6 +217,19 @@ class Runner:
         if res.log_path:
             self.logs.setdefault(step["name"], []).append(res.log_path)
         return "ok"
+
+    def hold_still(self):
+        """Pausa la sincronización y espera a que los dos robots se detengan.
+
+        Al terminar una corrida el puente sigue corrigiendo al robot que sigue (con la
+        alineación de esa corrida). Si ese robot se sigue moviendo mientras vuelve a la
+        marca, o mientras la persona lo coloca, la alineación de la corrida siguiente
+        empareja un robot en la marca con otro que ya salió de ella: el puente ve el error
+        en cero y los LiDAR no coinciden. La espera cubre los comandos que todavía vienen
+        por la red emulada y el tiempo de parada del robot.
+        """
+        self.configure(pause_sync=True)
+        time.sleep(STOP_WAIT_S + getattr(self, "last_delay_s", 0.0))
 
     def return_to_start(self):
         """Lleva los robots a la marca antes de alinear (ver start_pose.py)."""
