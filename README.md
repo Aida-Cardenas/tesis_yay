@@ -156,6 +156,14 @@ Luego se usa con `map_name:=mi_mapa`.
    ```
    En la Pi, el PC es la única fuente de hora (`/etc/chrony/conf.d/bumperbot.conf`); si cambia la IP del PC, se vuelve a correr `./install_dependencies.sh robot <IP del PC>`. Si el PC tiene `ufw` activo, hay que abrir el puerto de la hora: `sudo ufw allow 123/udp`.
 
+   **Red sin multicast.** ROS 2 encuentra al otro equipo con multicast. Si la red no lo deja pasar (VPN, redes de universidad, a veces WSL), `ros2 multicast send` en un equipo y `ros2 multicast receive` en el otro no llegan, aunque `ssh` y la hora sí funcionen. En ese caso, en los dos equipos:
+   ```bash
+   cd ~/tesis_ws && git pull
+   ./configurar_red_ros.sh <IP del PC> <IP de la Raspberry Pi>
+   source ~/.bashrc
+   ```
+   El script escribe `~/.ros/fastdds_bumperbot.xml`, que hace que Fast DDS se anuncie por unicast a las dos IP (y a `127.0.0.1` para los procesos del mismo equipo), y lo activa en `~/.bashrc`. Así quedó el 15 de noviembre de 2026, con una VPN prendida en el PC.
+
    **PC con Windows y WSL.** En WSL el reloj es el de Windows y el puerto de la hora (123) lo ocupa el servicio de hora de Windows, así que chrony de WSL no puede servirla (`journalctl -u chrony` muestra `Could not open NTP socket`). La hora la da Windows: en modo de red espejo (`networkingMode=mirrored` en `.wslconfig`) la IP de Windows y la de WSL son la misma, así que en la Pi no cambia nada. Una sola vez, en PowerShell como administrador:
    ```powershell
    Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\TimeProviders\NtpServer" -Name Enabled -Value 1
