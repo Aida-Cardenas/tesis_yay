@@ -83,6 +83,50 @@ else
   FAIL=1
 fi
 
+# El real de mentira sigue al gemelo con 300 ms: con las ganancias por defecto termina
+# todavía corrigiendo. Antes de volver a la marca hay que pausar la sincronización; si no,
+# sigue girando mientras vuelve, la alineación nueva lo empareja fuera de la marca y en la
+# corrida siguiente (con las ganancias del protocolo de simulación) el LiDAR no coincide.
+rm -rf /tmp/twin_gz_rt_logs /tmp/twin_gz_rt_res
+mkdir -p /tmp/twin_gz_rt_logs
+cat > /tmp/protocolo_rt.yaml <<'YAML'
+name: ci_rt
+defaults:
+  leader: twin
+  pattern: square
+  net_delay_ms: 300
+  linear_speed: 0.15
+  angular_speed: 0.6
+  distance: 1.0
+  settle: 3.0
+  gains: default
+experiments:
+  - {name: R, description: El real sigue al gemelo con 300 ms, repetitions: 2}
+  - {name: RT, description: Igual con kθ bajo, repetitions: 2, gains: {kx: 0.9, ky: 8.3, ktheta: 0.2}}
+YAML
+setsid ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake twin_mode:=gazebo gui:=false rviz:=false \
+  world_name:=arena arena:=[-1.0,2.0,-0.5,1.5] fake_real_tau:=0.3 fake_real_gain:=0.85 \
+  log_dir:=/tmp/twin_gz_rt_logs > /tmp/twin_gz_rt.log 2>&1 &
+RPID=$!
+sleep 45
+timeout 600 ros2 run bumperbot_digital_twin twin_experiment /tmp/protocolo_rt.yaml --auto --no-plots \
+  --out /tmp/twin_gz_rt_res > /tmp/twin_gz_rt_run.txt 2>&1
+RT=$?
+stop_group $RPID
+if [ $RT -eq 0 ] && python3 -c "
+import json,sys
+e=json.load(open('/tmp/twin_gz_rt_res/informe.json'))['experimentos']
+t={k: e[k].get('lidar_mae') for k in ('R', 'RT')}
+print('MAE del LiDAR [m] (media, desviación, corridas):', t)
+sys.exit(0 if t['RT'] and t['RT'][2] >= 1 and t['RT'][0] < 0.06 and (not t['R'] or not t['R'][2] or t['R'][0] < 0.06) else 1)
+" > /tmp/twin_gz_rt_check.txt 2>&1; then
+  annotate notice "El real sigue al gemelo con 300 ms: LiDAR después de cambiar las ganancias" "$(cat /tmp/twin_gz_rt_check.txt)"
+else
+  annotate warning "El real sigue al gemelo con 300 ms: LiDAR después de cambiar las ganancias" \
+    "$(cat /tmp/twin_gz_rt_check.txt 2>/dev/null)"$'\n'"$(tail -n 30 /tmp/twin_gz_rt_run.txt)"
+  FAIL=1
+fi
+
 # Navegación con vista previa: Nav2 + AMCL del gemelo en Gazebo (mapa arena) y robot real de mentira
 mkdir -p /tmp/twin_gz_nav_logs
 setsid ros2 launch bumperbot_digital_twin digital_twin.launch.py real_mode:=fake twin_mode:=gazebo gui:=false rviz:=false \
