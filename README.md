@@ -156,6 +156,17 @@ Luego se usa con `map_name:=mi_mapa`.
    ```
    En la Pi, el PC es la única fuente de hora (`/etc/chrony/conf.d/bumperbot.conf`); si cambia la IP del PC, se vuelve a correr `./install_dependencies.sh robot <IP del PC>`. Si el PC tiene `ufw` activo, hay que abrir el puerto de la hora: `sudo ufw allow 123/udp`.
 
+   **PC con Windows y WSL.** En WSL el reloj es el de Windows y el puerto de la hora (123) lo ocupa el servicio de hora de Windows, así que chrony de WSL no puede servirla (`journalctl -u chrony` muestra `Could not open NTP socket`). La hora la da Windows: en modo de red espejo (`networkingMode=mirrored` en `.wslconfig`) la IP de Windows y la de WSL son la misma, así que en la Pi no cambia nada. Una sola vez, en PowerShell como administrador:
+   ```powershell
+   Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\TimeProviders\NtpServer" -Name Enabled -Value 1
+   Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\Config" -Name AnnounceFlags -Value 5
+   Set-Service w32time -StartupType Automatic
+   Restart-Service w32time
+   w32tm /resync /force
+   New-NetFirewallRule -DisplayName "Hora para la Raspberry Pi (NTP)" -Direction Inbound -Protocol UDP -LocalPort 123 -RemoteAddress LocalSubnet -Action Allow -Profile Any
+   ```
+   Windows anuncia un margen de error de unos 10 s (`+/- 10.0s` en `chronyc sources`), y chrony rechaza por defecto las fuentes con más de 3 s; por eso la Pi lleva `maxdistance 20` en `bumperbot.conf`. Con eso, el 15 de noviembre de 2026 la Pi quedó con `^*` y a 0,25 ms de Windows. Que el reloj de WSL siga al de Windows lo confirma la diferencia de relojes que mide `twin_experiment` al empezar.
+
    Al empezar, `twin_experiment` mide la diferencia de relojes con el robot sin red emulada: avisa si supera 10 ms y no arranca si supera 50 ms. Esa medida (que el puente sigue afinando solo mientras no hay red emulada, porque la cola de la emulación la sesgaría) se guarda en cada corrida y el análisis corrige con ella el error real.
 4. **Lanzar** en la Raspberry Pi:
    ```bash

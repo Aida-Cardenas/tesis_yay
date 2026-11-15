@@ -67,7 +67,10 @@ if [ "$MODE" = "robot" ]; then
     if ! grep -q "^confdir /etc/chrony/conf.d" "$CHRONY_CONF"; then
       echo "confdir /etc/chrony/conf.d" | sudo tee -a "$CHRONY_CONF" > /dev/null
     fi
-    echo "server $PC_IP iburst prefer trust" | sudo tee /etc/chrony/conf.d/bumperbot.conf > /dev/null
+    # maxdistance: si el PC es Windows (WSL), la hora la sirve el servicio de
+    # Windows, que anuncia un margen de error de unos 10 s aunque en la red local
+    # es preciso al milisegundo. Con el límite por defecto (3 s) chrony lo rechaza.
+    printf "server %s iburst prefer trust\nmaxdistance 20\n" "$PC_IP" | sudo tee /etc/chrony/conf.d/bumperbot.conf > /dev/null
     echo ">> chrony: la Raspberry Pi toma la hora solo del PC ($PC_IP)"
   else
     echo ">> ADVERTENCIA: sin la IP del PC, chrony usa los servidores de internet. Para la toma de datos"
@@ -77,7 +80,18 @@ else
   if ! grep -q "^allow" "$CHRONY_CONF"; then
     printf "allow 10.0.0.0/8\nallow 172.16.0.0/12\nallow 192.168.0.0/16\nlocal stratum 10\n" | sudo tee -a "$CHRONY_CONF" > /dev/null
   fi
-  echo ">> chrony: este PC sirve la hora a la red local (también sin internet)"
+  if grep -qi microsoft /proc/version; then
+    # En WSL el reloj es el de Windows y el puerto 123 lo ocupa el servicio de
+    # hora de Windows, así que chrony de WSL no puede servir la hora. La Pi se
+    # sincroniza con Windows (en modo de red espejo tiene la misma IP que WSL).
+    echo ">> WSL: la hora para la Raspberry Pi la da Windows, no chrony. Una sola vez, en PowerShell como administrador:"
+    echo '   Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\TimeProviders\NtpServer" -Name Enabled -Value 1'
+    echo '   Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\Config" -Name AnnounceFlags -Value 5'
+    echo '   Set-Service w32time -StartupType Automatic; Restart-Service w32time; w32tm /resync /force'
+    echo '   New-NetFirewallRule -DisplayName "Hora para la Raspberry Pi (NTP)" -Direction Inbound -Protocol UDP -LocalPort 123 -RemoteAddress LocalSubnet -Action Allow -Profile Any'
+  else
+    echo ">> chrony: este PC sirve la hora a la red local (también sin internet)"
+  fi
   if command -v ufw > /dev/null && sudo ufw status | grep -q "Status: active"; then
     echo ">> ufw está activo: abre el puerto de la hora para la Raspberry Pi con: sudo ufw allow 123/udp"
   fi
