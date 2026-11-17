@@ -164,6 +164,8 @@ Luego se usa con `map_name:=mi_mapa`.
    ```
    El script escribe `~/.ros/fastdds_bumperbot.xml`, que hace que Fast DDS se anuncie por unicast a las dos IP (y a `127.0.0.1` para los procesos del mismo equipo), y lo activa en `~/.bashrc`. Así quedó el 15 de noviembre de 2026, con una VPN prendida en el PC.
 
+   **Después de cambiar de red** (otra casa, la universidad, el hotspot del teléfono), las IP cambian. En la laptop y en la Pi, con las dos IP nuevas: `./cambiar_red.sh <IP de la laptop> <IP de la Raspberry Pi>`. Actualiza la configuración de ROS en los dos y, en la Pi, la fuente de la hora. La Pi solo se conecta a las redes Wi-Fi que conoce: una red nueva hay que agregársela antes, desde una red donde ya funcione.
+
    Si un comando `ros2 ...` se queda colgado sin decir nada (al interrumpirlo, el error termina en `TimeoutError` dentro de `ros2cli/node/daemon.py`), el daemon de la línea de comandos quedó trabado: `pkill -f _ros2_daemon` y repetir. Los nodos y los launch no usan el daemon; `--no-daemon` lo evita en un comando suelto.
 
    **PC con Windows y WSL.** En WSL el reloj es el de Windows y el puerto de la hora (123) lo ocupa el servicio de hora de Windows, así que chrony de WSL no puede servirla (`journalctl -u chrony` muestra `Could not open NTP socket`). La hora la da Windows: en modo de red espejo (`networkingMode=mirrored` en `.wslconfig`) la IP de Windows y la de WSL son la misma, así que en la Pi no cambia nada. Una sola vez, en PowerShell como administrador:
