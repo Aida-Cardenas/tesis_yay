@@ -23,7 +23,7 @@ fi
 source /opt/ros/humble/setup.bash
 
 sudo apt-get update
-sudo apt-get install -y python3-rosdep python3-colcon-common-extensions python3-pip
+sudo apt-get install -y python3-rosdep python3-colcon-common-extensions python3-pip python3-serial
 
 if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then
   sudo rosdep init

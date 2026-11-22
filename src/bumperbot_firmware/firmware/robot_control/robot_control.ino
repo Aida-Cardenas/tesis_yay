@@ -20,15 +20,22 @@ const double rad_per_count = 2.0 * PI / counts_per_rev;
 const unsigned long interval = 100;
 const unsigned long command_timeout = 500;
 
+// Highest PWM the PID may give (0-255). The motors are rated for 6 V and the
+// 3S battery gives 11.1-12.6 V, of which the L298N drops about 2 V: 150 of 255 is
+// about 6 V at the motor with the battery full. 255 only with 6 V motors on a 6 V
+// supply (or 12 V motors on the 3S battery).
+const double max_pwm = 150.0;
+
 // Faults, in control periods in a row:
 //   wrong way  PWM above fault_pwm while the wheel turns backwards faster than
 //              fault_speed (rad/s): encoder or motor wired the wrong way round
 //   stall      PWM at stall_pwm or more while the wheel turns slower than
 //              stall_speed: dead or loose encoder, or a blocked wheel
-const double fault_pwm = 200.0;
+// Both thresholds follow max_pwm, so they still trigger with a lower limit.
+const double fault_pwm = 0.8 * max_pwm;
 const double fault_speed = 1.0;
 const uint8_t fault_cycles = 3;
-const double stall_pwm = 250.0;
+const double stall_pwm = 0.98 * max_pwm;
 const double stall_speed = 0.5;
 const uint8_t stall_cycles = 10;
 
@@ -94,6 +101,7 @@ void setupWheel(Wheel &w, PID &pid, void (*isr)()) {
   const double sample_ratio = 100.0 / 90.0;
   pid.SetSampleTime(90);
   pid.SetTunings(pid.GetKp(), pid.GetKi() * sample_ratio, pid.GetKd() / sample_ratio);
+  pid.SetOutputLimits(0.0, max_pwm);
   // MANUAL until a non-zero speed is requested (see updateMode)
   pid.SetMode(MANUAL);
 }

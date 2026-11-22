@@ -24,7 +24,7 @@ jobs:
           apt-get update
           rosdep update --rosdistro humble
           rosdep install --from-paths src --ignore-src --rosdistro humble -y
-          apt-get install -y liburdfdom-tools python3-pytest ros-humble-key-teleop
+          apt-get install -y liburdfdom-tools python3-pytest python3-serial ros-humble-key-teleop
 
       - name: colcon build
         run: |
@@ -36,6 +36,13 @@ jobs:
           source /opt/ros/humble/setup.bash
           colcon test --packages-select bumperbot_firmware --event-handlers console_cohesion+
           colcon test-result --verbose
+
+      - name: Firmware del Arduino (compila para el Nano y probar_arduino.py)
+        run: |
+          apt-get install -y gcc-avr avr-libc arduino-core-avr git
+          git clone -q --depth 1 https://github.com/br3ttb/Arduino-PID-Library.git /tmp/pidlib
+          ci/compilar_firmware.sh src/bumperbot_firmware/firmware/robot_control/robot_control.ino /tmp/pidlib
+          python3 -m pytest ci/test_probar_arduino.py -v -p no:cacheprovider
 
       - name: Verificar que los launch y URDF cargan
         run: |

@@ -142,7 +142,7 @@ Luego se usa con `map_name:=mi_mapa`.
 
 ## Uso con el robot real
 
-1. **Firmware.** Cargar `src/bumperbot_firmware/firmware/robot_control/robot_control.ino` en el Arduino con el Arduino IDE (necesita la biblioteca **PID** de Brett Beauregard, desde el gestor de bibliotecas). En los Nano clones, si la carga falla con `not in sync`, elegir *Procesador: ATmega328P (Old Bootloader)*. El monitor serie va a 115200 baudios. Si un motor gira al revés, se invierten sus dos cables en el L298N; si un encoder cuenta al revés, se intercambian sus fases A y B.
+1. **Firmware.** Cargar `src/bumperbot_firmware/firmware/robot_control/robot_control.ino` en el Arduino con el Arduino IDE (necesita la biblioteca **PID** de Brett Beauregard, desde el gestor de bibliotecas). En los Nano clones, si la carga falla con `not in sync`, elegir *Procesador: ATmega328P (Old Bootloader)*. El monitor serie va a 115200 baudios. `max_pwm` (al principio del sketch) limita el PWM: 150 de 255 deja unos 6 V en motores de 6 V con la batería 3S de 11,1 V; con motores de 12 V se sube a 255. Si un motor gira al revés, se invierten sus dos cables en el L298N; si un encoder cuenta al revés, se intercambian sus fases A y B.
 2. **Reglas udev** (en la Raspberry Pi, una sola vez). Revisar los IDs con `lsusb` y ajustar el archivo si hace falta:
    ```bash
    sudo cp udev/90-bumperbot.rules /etc/udev/rules.d/
@@ -191,7 +191,19 @@ Luego se usa con `map_name:=mi_mapa`.
 
    > **Cuidado.** Un encoder que cuenta al revés respecto de su motor, o que no cuenta (un cable suelto), hace que el PID empuje cada vez más: la rueda se va al PWM máximo, no a la velocidad pedida. El sketch detiene **las dos ruedas** si una sigue girando al revés contra casi todo el PWM durante 0,3 s, o si no gira con el PWM al máximo durante 1 s (también si está trabada). Desde ahí cada línea termina en `fr,` o `fl,` (la rueda que falló) hasta reiniciar el Arduino, y la Pi manda solo velocidad cero hasta que se vuelva a lanzar `real_robot.launch.py`. Aun así, si una rueda se acelera de golpe, dejar de enviar comandos (o cerrar el monitor serie) y no volver a probar en el piso hasta corregir el cableado.
 
-   1. *Hacia adelante, sin ROS.* Con `real_robot.launch.py` cerrado, abrir el monitor serie del Arduino IDE a 115200 baudios y enviar `rp03.00,lp03.00,` varias veces seguidas (el Arduino frena las ruedas si pasa medio segundo sin comandos). Las dos ruedas deben girar hacia el frente del robot, a una velocidad moderada; las respuestas deben empezar con `rp` y traer `lp` (signo positivo en ambas ruedas), los contadores `rc` y `lc` deben ir aumentando y el valor de `t` crece 100 por línea. Si una rueda gira hacia atrás, se invierten los dos cables de ese motor en el L298N. Si una rueda se dispara y la línea termina en `fr,` o `fl,` (o gira hacia adelante pero responde con `n`), se intercambian las fases A y B de su encoder; si la rueda gira pero su contador no cambia, revisar los cables del encoder. Después, reiniciar el Arduino (botón de reset) y repetir.
+   1. *Hacia adelante, sin ROS.* Con `real_robot.launch.py` y el monitor serie cerrados, en la Pi (o en cualquier equipo con el Arduino conectado por USB y `python3-serial`):
+      ```bash
+      python3 probar_arduino.py hola
+      python3 probar_arduino.py girar
+      ```
+      `girar` manda 3 rad/s a las dos ruedas durante 3 s (el Arduino frena si pasa medio segundo sin comandos, por eso el script los repite cada 100 ms) y muestra la velocidad medida. Las dos ruedas deben girar hacia el frente del robot y medir unos 3 rad/s positivos. Si una rueda gira hacia atrás, se invierten los dos cables de ese motor en el L298N. Si el script avisa una FALLA o que la rueda midió hacia atrás mientras giraba hacia adelante, se intercambian las fases A y B de su encoder; si dice que casi no se movió, revisar la batería y los cables del motor. Tras una falla, reiniciar el Arduino (botón de reset) y repetir. Con `--rueda derecha` o `--rueda izquierda` se prueba una sola; `--puerto COM3` en Windows o `--puerto /dev/ttyUSB0` sin reglas udev.
+
+      Con el sentido corregido, dos medidas más:
+      ```bash
+      python3 probar_arduino.py contar
+      python3 probar_arduino.py maxima
+      ```
+      `contar`: se giran las dos ruedas a mano exactamente 5 vueltas hacia adelante y se aprieta Enter; el promedio de cuentas por vuelta va en `counts_per_rev` (`robot_control.ino`, y se vuelve a cargar) y en `encoder_counts_per_rev` (`bumperbot_ros2_control.xacro`, y `colcon build`). `maxima`: las ruedas al tope de PWM que permite el sketch (`max_pwm`, 150 de 255 para motores de 6 V con la batería 3S) y la velocidad que resulta en m/s; si no llega a 0,3 m/s, las pruebas se hacen a menos velocidad en los dos robots.
    2. *Giro, con ROS.* Todavía con las ruedas en el aire, lanzar `real_robot.launch.py` y en otra terminal:
       ```bash
       ros2 topic pub -r 10 /key_vel geometry_msgs/msg/Twist "{angular: {z: 0.5}}"
