@@ -1,29 +1,27 @@
 from svglib import S
-s=S(2600,1450)
-s.panel(30,30,560,1230,"Dominio 10","robot físico (Raspberry Pi)")
-s.panel(2010,30,560,1230,"Dominio 20","gemelo digital (Gazebo)")
-s.panel(640,30,1320,1230,"Proceso twin_bridge","en el computador")
-# domain topics
-L=[(150,["Odometría de ruedas","/bumperbot_controller/odom"],"ctl"),(290,["Comando aplicado","/bumperbot_controller/cmd_vel"],"ctl"),(430,["LiDAR","/scan"],"ctl"),(570,["Entrada del seguidor","twin_vel → twist_mux (95)"],"ctl"),(760,["latency_echo","/digital_twin/ping → pong"],"twin"),(900,["anomaly_detector","/digital_twin/anomalies"],"twin")]
-R=[(150,["Odometría de ruedas","/bumperbot_controller/odom"],"ctl"),(290,["Comando aplicado","/bumperbot_controller/cmd_vel"],"ctl"),(430,["LiDAR simulado","/scan"],"sim"),(570,["Entrada del seguidor","twin_vel → twist_mux (95)"],"ctl"),(760,["LiDAR real reenviado","/digital_twin/real_scan"],"sim"),(900,["Estado y trayectorias","/digital_twin/status, …_path"],"twin")]
-for y,l,k in L: s.box(70,y,480,100,l,k,size=23)
-for y,l,k in R: s.box(2050,y,480,100,l,k,size=23)
-# contexts
-s.box(690,150,380,520,["Contexto ROS 2","dominio 10","","suscripciones","y publicadores","del robot físico","","ejecutor en","su propio hilo"],"white",size=24)
-s.box(1530,150,380,520,["Contexto ROS 2","dominio 20","","suscripciones","y publicadores","del gemelo","","ejecutor en","su propio hilo"],"white",size=24)
-s.box(1110,150,380,190,["Estado compartido","de los dos robots","protegido con un cerrojo"],"twin",size=24)
-for y in [200,340,480]:
-    s.arrow([(550,y),(690,y)]); s.arrow([(2050,y),(1910,y)])
-s.arrow([(690,620),(550,620)],"#E65100",4); s.arrow([(1910,620),(2050,620)],"#E65100",4)
-s.arrow([(550,810),(690,640)],both=True); s.arrow([(550,950),(690,655)])
-s.arrow([(1910,640),(2050,810)]); s.arrow([(1910,655),(2050,950)])
-s.arrow([(1070,250),(1110,250)],both=True); s.arrow([(1530,250),(1490,250)],both=True)
-s.arrow([(1300,340),(1300,400)],both=True)
-# cycle
-s.box(1110,400,380,610,["Ciclo a 20 Hz","(reloj de pared)","","1. Alinear las odometrías","2. Prealimentación:","comando del líder","3. Realimentación:","ley de Kanayama","4. Compensación de latencia:","predicción y predictor de Smith","5. Seguridad: datos viejos","o error mayor a 0,75 m","6. twin_vel al seguidor"],"twin",size=23)
-s.arrow([(1110,940),(880,940),(880,670)],"#E65100",4); s.arrow([(1490,940),(1720,940),(1720,670)],"#E65100",4)
-s.text(880,975,"si el líder es el gemelo",20,color="#BF360C",italic=True); s.text(1720,975,"si el líder es el robot",20,color="#BF360C",italic=True)
-# services
-s.box(690,1060,1220,150,["Servicios /digital_twin/…","align · set_feedback · switch_leader · configure · new_log","Registro de cada corrida en CSV (~/twin_logs)"],"white",size=24)
-s.legend(200,1350,[("ctl","Tópicos del software base"),("twin","Capa bidireccional"),("sim","Gemelo y comparación de LiDAR")],cols=3,colw=780)
+s=S(1460,1310)
+F=26; SB=24
+s.panel(15,15,380,1180,"Dominio 10","robot físico")
+s.panel(1065,15,380,1180,"Dominio 20","gemelo digital")
+s.panel(415,15,630,1180,"twin_bridge","un solo proceso en el computador")
+L=[(130,["Odometría","…/odom"],"ctl"),(255,["Comando aplicado","…/cmd_vel"],"ctl"),(380,["LiDAR","/scan"],"ctl"),(505,["Entrada del seguidor","twin_vel"],"ctl"),(680,["latency_echo","ping → pong"],"twin"),(805,["anomaly_detector","anomalías"],"twin")]
+R=[(130,["Odometría","…/odom"],"ctl"),(255,["Comando aplicado","…/cmd_vel"],"ctl"),(380,["LiDAR simulado","/scan"],"sim"),(505,["Entrada del seguidor","twin_vel"],"ctl"),(680,["LiDAR real reenviado","…/real_scan"],"sim"),(805,["Estado y trayectorias","…/status, …_path"],"twin")]
+for y,l,k in L: s.box(40,y,330,95,l,k,size=F,sub=SB)
+for y,l,k in R: s.box(1090,y,330,95,l,k,size=F,sub=SB)
+s.text(205,955,"…/ = /bumperbot_controller/",21,color="#555",italic=True); s.text(205,983,"o /digital_twin/",21,color="#555",italic=True)
+s.box(440,130,280,470,["Contexto","dominio 10","","suscriptores","y publicadores","","ejecutor en","su hilo"],"white",size=F,sub=SB)
+s.box(740,130,280,470,["Contexto","dominio 20","","suscriptores","y publicadores","","ejecutor en","su hilo"],"white",size=F,sub=SB)
+for y in [177,302,427]:
+    s.arrow([(370,y),(440,y)]); s.arrow([(1090,y),(1020,y)])
+s.arrow([(440,552),(370,552)],"#E65100",4); s.arrow([(1020,552),(1090,552)],"#E65100",4)
+s.arrow([(370,727),(400,727),(400,585),(440,585)],both=True); s.arrow([(370,852),(410,852),(410,595),(440,595)])
+s.arrow([(1020,585),(1060,585),(1060,727),(1090,727)]); s.arrow([(1020,595),(1050,595),(1050,852),(1090,852)])
+s.box(440,640,580,90,["Estado compartido de los dos robots","protegido con un cerrojo"],"twin",size=F,sub=SB)
+s.arrow([(580,600),(580,640)],both=True); s.arrow([(880,600),(880,640)],both=True)
+s.box(440,770,580,330,["Ciclo de sincronización a 20 Hz","1. alinea las odometrías","2. prealimentación: comando del líder","3. realimentación: ley de Kanayama","4. compensación de latencia","5. seguridad: datos viejos o error > 0,75 m","6. publica twin_vel para el seguidor"],"twin",size=F,sub=SB,left=30)
+s.arrow([(730,730),(730,770)],both=True)
+s.box(440,1120,580,0,[" "],"white")
+s.text(730,1135,"Servicios: align · set_feedback · switch_leader · configure",22,color="#444")
+s.text(730,1165,"Registro de cada corrida en CSV",22,color="#444")
+s.legend(60,1260,[("ctl","Tópicos del software base"),("twin","Capa bidireccional"),("sim","Gemelo y LiDAR")],cols=3,colw=470)
 s.save("gemelo.svg")

@@ -11,17 +11,17 @@ def fit(im,w,h):
     c=Image.new('RGB',(w,h),'white'); c.paste(im,((w-im.width)//2,(h-im.height)//2)); return c
 cw,ch=1100,900
 panels=[('iso','(a) Vista isométrica'),('front','(b) Vista frontal'),('side','(c) Vista lateral'),('top','(d) Vista superior'),('plates','(e) Placas Base, Medio y Tope')]
-lab_h=90
-W=Image.new('RGB',(cw*3,(ch+lab_h)*2),'white'); d=ImageDraw.Draw(W); f=ImageFont.truetype(F,46)
+lab_h=115
+W=Image.new('RGB',(cw*3,(ch+lab_h)*2),'white'); d=ImageDraw.Draw(W); f=ImageFont.truetype(F,64)
 for i,(v,t) in enumerate(panels):
     im=fit(Image.open(f'out_{v}.png'),cw-60,ch-40)
     if v=='plates':
         a=np.array(im); orange=(a[:,:,0]>150)&(a[:,:,1]>60)&(a[:,:,1]<140)&(a[:,:,2]<90)
         rows=np.where(orange.any(1))[0]; gaps=np.where(np.diff(rows)>15)[0]
         starts=[rows[0]]+[rows[g+1] for g in gaps]; ends=[rows[g] for g in gaps]+[rows[-1]]
-        dd=ImageDraw.Draw(im); fb=ImageFont.truetype(FB,44)
+        dd=ImageDraw.Draw(im); fb=ImageFont.truetype(FB,60)
         for (s,e),name in zip(zip(starts,ends),['Tope','Medio','Base']):
-            cols=np.where(orange[s:e+1].any(0))[0]; x=cols.max()+25; y=(s+e)//2-24
+            cols=np.where(orange[s:e+1].any(0))[0]; x=cols.max()+25; y=(s+e)//2-32
             dd.text((x,y),name,font=fb,fill=(40,40,40))
     col=(i%3) if i<3 else (0.5 if v=='top' else 1.5); x=int(col*cw)+30; y=(i//3)*(ch+lab_h)+20
     W.paste(im,(x,y))
