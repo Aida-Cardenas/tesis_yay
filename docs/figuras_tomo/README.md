@@ -26,3 +26,7 @@ python3 docs/figuras_tomo/fuentes/simulacion.py <carpeta de la sesión> docs/fig
 | `modelo_gemelo_ajuste.png` | Respuesta del robot físico simulado y del modelo identificado |
 | `error_vs_latencia.png` | RMSE real con el gemelo como seguidor, de L0, L150, L300, L150C y L300C |
 | `ganancias_sintonizacion.png` | Simulación de la sintonización (cuadrado, 300 ms), antes y después |
+
+## Capturas (`capturas/`)
+
+Recortes de las capturas de Gazebo, RViz y el panel tomadas el 14/11/2026. `cad_y_gazebo.png` junta el render del modelo CAD desde un ángulo bajo (`node shot.js low`, con `fuentes/index.html`) y la captura del gemelo en Gazebo desde un ángulo parecido.

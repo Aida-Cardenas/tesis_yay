@@ -32,7 +32,7 @@ await Promise.all(names.map(n=>new Promise(res=>loader.load(`assets/${n}.glb`,g=
 const box=new THREE.Box3().setFromObject(root);const c=box.getCenter(new THREE.Vector3());const s=box.getSize(new THREE.Vector3());
 const r=Math.max(s.x,s.y,s.z);
 let cam;
-const dirs={iso:[1.0,-1.25,0.85],front:[1,0,0],side:[0,-1,0],top:[0,0,1],plates:[1.0,-1.25,0.95],rear:[-1,0.0,0.0]};
+const dirs={iso:[1.0,-1.25,0.85],front:[1,0,0],side:[0,-1,0],top:[0,0,1],plates:[1.0,-1.25,0.95],rear:[-1,0.0,0.0],low:[1.0,-1.25,0.32],lowl:[1.0,1.25,0.32]};
 const dv=new THREE.Vector3(...dirs[view]).normalize();
 const ortho=['front','side','top'].includes(view);
 const pad=parseFloat(q.get('pad')||'0.62');
