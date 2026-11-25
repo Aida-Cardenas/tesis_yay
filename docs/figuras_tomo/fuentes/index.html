@@ -1,0 +1,60 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:#fff;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+const q=new URLSearchParams(location.search);
+const view=q.get('view')||'iso';
+const W=innerWidth,H=innerHeight;
+const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
+renderer.setPixelRatio(devicePixelRatio);renderer.setSize(W,H);renderer.setClearColor(0xffffff,1);
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const scene=new THREE.Scene();
+scene.add(new THREE.HemisphereLight(0xffffff,0x9a9a9a,1.6));
+const d1=new THREE.DirectionalLight(0xffffff,1.6);d1.position.set(1,-1.4,2.2);scene.add(d1);
+const d2=new THREE.DirectionalLight(0xffffff,0.6);d2.position.set(-1.5,1.2,0.8);scene.add(d2);
+const colors={placa_base:0xE8772E,placa_medio:0xE8772E,placa_tope:0xE8772E,resto:0xB9BEC4,rueda_der:0x2B2B2B,rueda_izq:0x2B2B2B,loca_del:0x8C9196,loca_tras:0x8C9196,imu:0x2F6DB5,lidar:0x3A3D42};
+const platesOnly=view==='plates';
+const names=platesOnly?['placa_base','placa_medio','placa_tope']:Object.keys(colors);
+const offs={placa_base:0,placa_medio:0.07,placa_tope:0.14};
+const loader=new GLTFLoader();const root=new THREE.Group();scene.add(root);
+await Promise.all(names.map(n=>new Promise(res=>loader.load(`assets/${n}.glb`,g=>{
+  g.scene.traverse(o=>{if(o.isMesh){o.geometry.deleteAttribute("normal");o.geometry=(o.geometry.index?o.geometry.toNonIndexed():o.geometry);o.geometry.computeVertexNormals();
+    o.material=new THREE.MeshStandardMaterial({color:colors[n],roughness:0.75,metalness:0.05,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});
+    const e=new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry,40),new THREE.LineBasicMaterial({color:0x1a1a1a,transparent:true,opacity:0.35}));
+    o.add(e);}});
+  if(platesOnly) g.scene.position.z=offs[n];
+  root.add(g.scene);res();}))));
+// trimesh GLB exports Y-up? keep Z-up: set camera up = z
+const box=new THREE.Box3().setFromObject(root);const c=box.getCenter(new THREE.Vector3());const s=box.getSize(new THREE.Vector3());
+const r=Math.max(s.x,s.y,s.z);
+let cam;
+const dirs={iso:[1.0,-1.25,0.85],front:[1,0,0],side:[0,-1,0],top:[0,0,1],plates:[1.0,-1.25,0.95],rear:[-1,0.0,0.0]};
+const dv=new THREE.Vector3(...dirs[view]).normalize();
+const ortho=['front','side','top'].includes(view);
+const pad=parseFloat(q.get('pad')||'0.62');
+if(ortho){const a=W/H;const h=r*pad*1.15;cam=new THREE.OrthographicCamera(-h*a,h*a,h,-h,0.001,10);}
+else{cam=new THREE.PerspectiveCamera(22,W/H,0.001,10);}
+cam.up.set(0,0,1);
+const dist=ortho?1:r*2.9;
+cam.position.copy(c.clone().add(dv.multiplyScalar(dist)));
+if(view==='top') cam.up.set(1,0,0);
+cam.lookAt(c);
+const corners=[];for(const x of [box.min.x,box.max.x])for(const y of [box.min.y,box.max.y])for(const z of [box.min.z,box.max.z])corners.push(new THREE.Vector3(x,y,z));
+function extent(){cam.updateMatrixWorld();cam.updateProjectionMatrix();let mx=0,cx=0,cy=0,xs=[],ys=[];for(const v of corners){const p=v.clone().project(cam);xs.push(p.x);ys.push(p.y);}
+ return {x0:Math.min(...xs),x1:Math.max(...xs),y0:Math.min(...ys),y1:Math.max(...ys)};}
+const fill=parseFloat(q.get('fill')||'0.86');
+for(let i=0;i<40;i++){const e=extent();const m=Math.max(e.x1-e.x0,e.y1-e.y0*1)/2;const k=Math.max((e.x1-e.x0)/2,(e.y1-e.y0)/2)/fill;
+ if(ortho){cam.left*=k;cam.right*=k;cam.top*=k;cam.bottom*=k;}else{const dir=cam.position.clone().sub(c);cam.position.copy(c.clone().add(dir.multiplyScalar(k)));}
+ const e2=extent();const sx=(e2.x0+e2.x1)/2, sy=(e2.y0+e2.y1)/2;
+ const right=new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld,0), up=new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld,1);
+ const half=ortho?(cam.top):(cam.position.distanceTo(c)*Math.tan(THREE.MathUtils.degToRad(cam.fov/2)));
+ const shift=right.multiplyScalar(sx*half*(ortho?W/H:W/H)).add(up.multiplyScalar(sy*half));
+ cam.position.add(shift);c.add(shift);cam.lookAt(c);
+ if(Math.abs(k-1)<0.002&&Math.abs(sx)<0.002&&Math.abs(sy)<0.002)break;}
+renderer.render(scene,cam);
+window.__done=true;
+</script></body></html>
