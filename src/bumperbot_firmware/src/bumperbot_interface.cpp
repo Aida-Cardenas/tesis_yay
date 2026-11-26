@@ -51,7 +51,7 @@ CallbackReturn BumperbotInterface::on_init(const hardware_interface::HardwareInf
   }
 
   // Must match counts_per_rev in robot_control.ino
-  double counts_per_rev = 770.0;
+  double counts_per_rev = 1362.0;
   const auto cpr = info_.hardware_parameters.find("encoder_counts_per_rev");
   if (cpr != info_.hardware_parameters.end())
   {

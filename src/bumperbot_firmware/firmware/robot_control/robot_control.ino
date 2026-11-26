@@ -11,8 +11,10 @@
 //   from the PC "rp05.20,ln03.10," wheel, sign and speed setpoint in rad/s
 
 // Encoder resolution: both edges of phase A are counted, so this is twice the
-// number of phase A pulses per wheel revolution (385).
-const double counts_per_rev = 770.0;
+// number of phase A pulses per wheel revolution. Measured on the JGA25-371
+// motors by turning each wheel 10 turns forward by hand, twice per wheel
+// (1318, 1349, 1378 and 1401 counts per turn): 1362 on average.
+const double counts_per_rev = 1362.0;
 const double rad_per_count = 2.0 * PI / counts_per_rev;
 
 // Control period and safety timeout for commands from the PC (ROS crashed, cable
